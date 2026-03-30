@@ -1,0 +1,242 @@
+# Support AI Agent
+
+Multi-tenant, provider-agnostic AI draft response microservice for customer support tickets. Uses **RAG (Retrieval-Augmented Generation)** with **pgvector** to generate context-aware draft replies personalized to each customer.
+
+## Architecture
+
+```
+Ticket Provider (Intercom, Zendesk, ...)
+        |
+        v
+   Webhook / Polling
+        |
+        v
+  Normalize (Adapter Pattern)
+        |
+        v
+  Upsert Ticket + Customer
+        |
+        v
+  RAG Pipeline
+  ├── Embed customer message
+  ├── pgvector search: KB articles + past agent replies
+  ├── Build customer context (metadata, history)
+  └── Call AI -> Draft response
+        |
+        v
+  Agent Review (approve/reject/send)
+```
+
+### Key Design Pillars
+
+- **Multi-tenant** -- Every table is scoped by `tenant_id`. Data is never shared between tenants.
+- **Provider-agnostic** -- Adapter pattern with a common `TicketProvider` interface. Adding a new provider requires zero changes to services, controllers, or database.
+- **Customer-aware** -- AI drafts are personalized using customer order history, previous tickets, and profile metadata.
+- **Dual sync mode** -- Real-time webhooks + periodic polling (cron). No tickets are ever lost.
+
+## Tech Stack
+
+- **Runtime**: Node.js 20+ / TypeScript
+- **Framework**: Express.js
+- **Database**: PostgreSQL 16 + pgvector
+- **AI**: RAG pipeline via ai.yengec.co (`/embed` + `/chat`)
+- **Testing**: Vitest + Supertest
+- **Infra**: Docker, Kubernetes
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js >= 20
+- Docker & Docker Compose
+
+### Setup
+
+```bash
+# Clone
+git clone https://github.com/salyangoz/support-ai-agent.git
+cd support-ai-agent
+
+# Start PostgreSQL with pgvector
+docker-compose up -d db
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# Run database migrations
+npm run migrate
+
+# Start development server
+npm run dev
+```
+
+The server starts on `http://localhost:3001`. Verify with:
+
+```bash
+curl http://localhost:3001/health
+```
+
+### Docker (full stack)
+
+```bash
+docker-compose up -d
+```
+
+This starts both the app (port 3001) and PostgreSQL with pgvector (port 5433).
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3001` |
+| `NODE_ENV` | Environment | `development` |
+| `ADMIN_API_KEY` | Admin API key for tenant management | required |
+| `DATABASE_URL` | PostgreSQL connection string | required |
+| `YENGEC_AI_BASE_URL` | AI backend URL | `https://ai.yengec.co` |
+| `LOG_LEVEL` | Winston log level | `info` |
+
+All business configuration (AI model, RAG settings, tone, auto-send) is stored **per-tenant** in the database `tenants.settings` JSONB column -- not in environment variables.
+
+## Tenant Settings
+
+Stored in `tenants.settings` JSONB. New tenants work with zero configuration using these defaults:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `auto_send_drafts` | `false` | Auto-send AI drafts without agent review |
+| `default_language` | `en` | Language for AI responses |
+| `rag_top_k` | `5` | Number of similar items to include in RAG context |
+| `ai_service` | `deepseek` | AI service to use |
+| `ai_model` | `deepseek-chat` | AI model to use |
+| `ai_instructions` | `""` | Custom system instructions per tenant |
+| `draft_tone` | `professional` | Tone: professional, friendly, formal |
+| `max_context_tokens` | `4000` | Max tokens for RAG context |
+| `sync_lookback_minutes` | `10` | Polling lookback window |
+
+## Provider Adapters
+
+Each provider implements the `TicketProvider` interface:
+
+```typescript
+interface TicketProvider {
+  fetchRecentTickets(sinceMinutes: number): Promise<NormalizedTicket[]>;
+  fetchTicketMessages(externalTicketId: string): Promise<NormalizedMessage[]>;
+  sendReply(externalTicketId: string, body: string, adminId?: string): Promise<void>;
+  verifyWebhook(rawBody: Buffer, headers: Record<string, any>): boolean;
+  parseWebhook(rawBody: Buffer, headers: Record<string, any>): WebhookEvent | null;
+}
+```
+
+### Supported Providers
+
+| Provider | Status | Webhook Verification |
+|----------|--------|---------------------|
+| Intercom | Implemented | HMAC-SHA1 (`X-Hub-Signature`) |
+| Zendesk | Stub | -- |
+
+### Adding a New Provider
+
+1. Create `src/providers/<name>/<name>.adapter.ts` implementing `TicketProvider`
+2. Create mapper + webhook + types files
+3. Add case in `src/providers/provider.factory.ts`
+4. No changes needed anywhere else
+
+## Database
+
+8 migrations run automatically on startup:
+
+1. `001` -- Enable pgvector extension
+2. `002` -- `tenants` (companies with API keys and settings)
+3. `003` -- `tenant_providers` (provider configs per tenant)
+4. `004` -- `customers` (per-tenant, with metadata JSONB)
+5. `005` -- `tickets` (provider-agnostic, linked to customers)
+6. `006` -- `messages` (with `vector(1536)` embedding column)
+7. `007` -- `knowledge_articles` (with `vector(1536)` embedding column)
+8. `008` -- `drafts` (AI-generated, with approval workflow)
+
+## Webhooks
+
+Each tenant+provider combo gets a unique webhook URL:
+
+```
+POST /webhooks/:tenantSlug/:provider
+```
+
+Examples:
+- `POST /webhooks/acme/intercom`
+- `POST /webhooks/bigcorp/zendesk`
+
+Webhooks are verified using provider-specific signatures (e.g., HMAC-SHA1 for Intercom) and processed asynchronously. The endpoint responds 200 immediately, then processes the event in the background.
+
+## Scheduler
+
+| Schedule | Job |
+|----------|-----|
+| `*/5 * * * *` | Sync all active tenants' providers (polling) |
+| `0 2 * * *` | Backfill missing embeddings |
+
+## Testing
+
+```bash
+# Start test database
+docker-compose up -d db-test
+
+# Run all tests
+npm test
+
+# Run unit tests only (no DB required)
+npm run test:unit
+
+# Run feature tests only (requires test DB)
+npm run test:feature
+```
+
+Unit tests: 38 passing (providers, services, middleware, utils).
+
+## Kubernetes
+
+Manifests in `k8s/`:
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/hpa.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+- 2-10 replicas with HPA (70% CPU target)
+- Health probes on `/health`
+- TLS via cert-manager
+
+## Project Structure
+
+```
+src/
+  config/           # Typed env config + tenant setting defaults
+  controllers/      # Express request handlers
+  database/         # Pool, migration runner, SQL migrations
+  middleware/       # auth, webhookAuth, errorHandler
+  models/           # TypeScript interfaces
+  providers/        # Adapter pattern (intercom/, zendesk/)
+  repositories/     # Raw SQL via pg (no ORM)
+  routes/           # Express router
+  scheduler/        # node-cron jobs
+  services/         # Business logic (RAG, sync, webhooks)
+  utils/            # Logger, HTML-to-text
+tests/
+  unit/             # Pure logic tests (no DB)
+  feature/          # Full request/response with real DB
+  helpers/          # Test DB, fixtures, mock providers
+k8s/                # Kubernetes manifests
+```
+
+## License
+
+Proprietary -- Salyangoz Yazilim Ltd.
