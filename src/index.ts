@@ -3,7 +3,6 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config';
 import { logger } from './utils/logger';
-import { runMigrations } from './database/migrate';
 import { createRouter } from './routes';
 import { startScheduler } from './scheduler';
 
@@ -23,9 +22,6 @@ export function createApp(): express.Application {
 
 async function main(): Promise<void> {
   try {
-    await runMigrations();
-    logger.info('Database migrations completed');
-
     const app = createApp();
 
     startScheduler();

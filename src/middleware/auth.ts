@@ -11,7 +11,11 @@ declare global {
   }
 }
 
-export function adminAuth(req: Request, res: Response, next: NextFunction): void {
+export function adminAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const apiKey = req.headers['x-api-key'] as string | undefined;
 
   if (!apiKey || apiKey !== config.adminApiKey) {
@@ -22,7 +26,11 @@ export function adminAuth(req: Request, res: Response, next: NextFunction): void
   next();
 }
 
-export async function tenantAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function tenantAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
   const apiKey = req.headers['x-api-key'] as string | undefined;
 
   if (!apiKey) {
@@ -38,14 +46,16 @@ export async function tenantAuth(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    if (!tenant.is_active) {
+    if (!tenant.isActive) {
       res.status(403).json({ error: 'Tenant is inactive' });
       return;
     }
 
     const tenantId = req.params.tenantId;
     if (tenantId && Number(tenantId) !== tenant.id) {
-      res.status(403).json({ error: 'API key does not match the specified tenant' });
+      res.status(403).json({
+        error: 'API key does not match the specified tenant',
+      });
       return;
     }
 

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as knowledgeBaseService from '../services/knowledgeBase.service';
+import { toSnakeCase } from '../utils/serializer';
 
 export async function list(
   req: Request,
@@ -18,7 +19,7 @@ export async function list(
       limit: limit ? Number(limit) : undefined,
     });
 
-    res.status(200).json({ data: articles });
+    res.status(200).json({ data: toSnakeCase(articles) });
   } catch (err) {
     next(err);
   }
@@ -39,7 +40,7 @@ export async function show(
       return;
     }
 
-    res.status(200).json(article);
+    res.status(200).json(toSnakeCase(article));
   } catch (err) {
     next(err);
   }
@@ -55,7 +56,9 @@ export async function create(
     const { title, content, category, language } = req.body;
 
     if (!title || !content) {
-      res.status(400).json({ error: 'title and content are required' });
+      res.status(400).json({
+        error: 'title and content are required',
+      });
       return;
     }
 
@@ -67,7 +70,7 @@ export async function create(
       language,
     });
 
-    res.status(201).json(article);
+    res.status(201).json(toSnakeCase(article));
   } catch (err) {
     next(err);
   }
@@ -95,7 +98,7 @@ export async function update(
       return;
     }
 
-    res.status(200).json(article);
+    res.status(200).json(toSnakeCase(article));
   } catch (err) {
     next(err);
   }
@@ -110,7 +113,10 @@ export async function remove(
     const tenantId = Number(req.params.tenantId);
     const id = Number(req.params.id);
 
-    const article = await knowledgeBaseService.softDeleteArticle(tenantId, id);
+    const article = await knowledgeBaseService.softDeleteArticle(
+      tenantId,
+      id,
+    );
 
     if (!article) {
       res.status(404).json({ error: 'Article not found' });

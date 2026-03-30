@@ -20,7 +20,8 @@ export async function syncTenantProvider(
   tenant: Tenant,
   providerConfig: TenantProvider,
 ) {
-  const adapter = createProvider({ ...providerConfig.credentials, provider: providerConfig.provider });
+  const credentials = providerConfig.credentials as Record<string, any>;
+  const adapter = createProvider({ ...credentials, provider: providerConfig.provider });
   const lookbackMinutes = getSetting(
     tenant,
     'sync_lookback_minutes',

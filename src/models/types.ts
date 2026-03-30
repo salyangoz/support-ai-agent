@@ -2,11 +2,11 @@ export interface Tenant {
   id: number;
   name: string;
   slug: string;
-  api_key: string;
+  apiKey: string;
   settings: TenantSettings;
-  is_active: boolean;
-  created_at: Date;
-  updated_at: Date;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface TenantSettings {
@@ -24,84 +24,83 @@ export interface TenantSettings {
 
 export interface TenantProvider {
   id: number;
-  tenant_id: number;
+  tenantId: number;
   provider: string;
   credentials: Record<string, any>;
-  webhook_secret: string | null;
-  is_active: boolean;
-  created_at: Date;
-  updated_at: Date;
+  webhookSecret: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Customer {
   id: number;
-  tenant_id: number;
-  external_id: string | null;
+  tenantId: number;
+  externalId: string | null;
   email: string | null;
   name: string | null;
   phone: string | null;
   metadata: Record<string, any>;
-  created_at: Date;
-  updated_at: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Ticket {
   id: number;
-  tenant_id: number;
-  customer_id: number | null;
+  tenantId: number;
+  customerId: number | null;
   provider: string;
-  external_id: string;
+  externalId: string;
   state: string;
   subject: string | null;
-  initial_body: string | null;
+  initialBody: string | null;
   language: string | null;
-  assignee_id: string | null;
-  external_created_at: Date | null;
-  external_updated_at: Date | null;
-  synced_at: Date;
-  created_at: Date;
-  updated_at: Date;
-  // Joined fields
+  assigneeId: string | null;
+  externalCreatedAt: Date | null;
+  externalUpdatedAt: Date | null;
+  syncedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
   customer?: Customer;
 }
 
 export interface Message {
   id: number;
-  ticket_id: number;
-  tenant_id: number;
-  external_id: string;
-  author_role: string;
-  author_id: string | null;
-  author_name: string | null;
+  ticketId: number;
+  tenantId: number;
+  externalId: string;
+  authorRole: string;
+  authorId: string | null;
+  authorName: string | null;
   body: string | null;
   embedding: number[] | null;
-  external_created_at: Date | null;
-  created_at: Date;
+  externalCreatedAt: Date | null;
+  createdAt: Date;
 }
 
 export interface KnowledgeArticle {
   id: number;
-  tenant_id: number;
+  tenantId: number;
   title: string;
   content: string;
   category: string | null;
   language: string | null;
   embedding: number[] | null;
-  is_active: boolean;
-  created_at: Date;
-  updated_at: Date;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Draft {
   id: number;
-  ticket_id: number;
-  tenant_id: number;
-  prompt_context: string | null;
-  draft_response: string;
-  ai_model: string | null;
-  ai_tokens_used: number | null;
+  ticketId: number;
+  tenantId: number;
+  promptContext: string | null;
+  draftResponse: string;
+  aiModel: string | null;
+  aiTokensUsed: number | null;
   status: string;
-  reviewed_by: string | null;
-  reviewed_at: Date | null;
-  created_at: Date;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
 }

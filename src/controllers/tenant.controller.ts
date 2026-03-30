@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as tenantService from '../services/tenant.service';
+import { toSnakeCase } from '../utils/serializer';
 
 export async function create(
   req: Request,
@@ -15,7 +16,7 @@ export async function create(
     }
 
     const tenant = await tenantService.createTenant({ name, slug, settings });
-    res.status(201).json(tenant);
+    res.status(201).json(toSnakeCase(tenant));
   } catch (err) {
     next(err);
   }
@@ -27,14 +28,16 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenant = await tenantService.getTenantById(Number(req.params.tenantId));
+    const tenant = await tenantService.getTenantById(
+      Number(req.params.tenantId),
+    );
 
     if (!tenant) {
       res.status(404).json({ error: 'Tenant not found' });
       return;
     }
 
-    res.status(200).json(tenant);
+    res.status(200).json(toSnakeCase(tenant));
   } catch (err) {
     next(err);
   }
@@ -47,14 +50,17 @@ export async function update(
 ): Promise<void> {
   try {
     const { name, settings } = req.body;
-    const tenant = await tenantService.updateTenant(Number(req.params.tenantId), { name, settings });
+    const tenant = await tenantService.updateTenant(
+      Number(req.params.tenantId),
+      { name, settings },
+    );
 
     if (!tenant) {
       res.status(404).json({ error: 'Tenant not found' });
       return;
     }
 
-    res.status(200).json(tenant);
+    res.status(200).json(toSnakeCase(tenant));
   } catch (err) {
     next(err);
   }

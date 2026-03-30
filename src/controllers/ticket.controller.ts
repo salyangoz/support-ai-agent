@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as ticketService from '../services/ticket.service';
 import * as ticketSyncService from '../services/ticketSync.service';
 import * as tenantProviderService from '../services/tenantProvider.service';
+import { toSnakeCase } from '../utils/serializer';
 import { logger } from '../utils/logger';
 
 export async function list(
@@ -21,7 +22,7 @@ export async function list(
       limit: limit ? Number(limit) : undefined,
     });
 
-    res.status(200).json({ data: tickets });
+    res.status(200).json({ data: toSnakeCase(tickets) });
   } catch (err) {
     next(err);
   }
@@ -43,7 +44,7 @@ export async function show(
       return;
     }
 
-    res.status(200).json(result);
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }
@@ -64,19 +65,30 @@ export async function sync(
     }
 
     const tenant = req.tenant!;
-    const providerConfig = await tenantProviderService.getProvider(tenantId, provider);
+    const providerConfig = await tenantProviderService.getProvider(
+      tenantId,
+      provider,
+    );
 
     if (!providerConfig) {
-      res.status(404).json({ error: 'Provider not configured for this tenant' });
+      res.status(404).json({
+        error: 'Provider not configured for this tenant',
+      });
       return;
     }
 
     res.status(200).json({ message: 'Sync started' });
 
     setImmediate(() => {
-      ticketSyncService.syncTenantProvider(tenant, providerConfig).catch((err) => {
-        logger.error('Background sync failed', { tenantId, provider, error: err.message });
-      });
+      ticketSyncService
+        .syncTenantProvider(tenant as any, providerConfig as any)
+        .catch((err: any) => {
+          logger.error('Background sync failed', {
+            tenantId,
+            provider,
+            error: err.message,
+          });
+        });
     });
   } catch (err) {
     next(err);

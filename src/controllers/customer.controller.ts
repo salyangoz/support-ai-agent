@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as customerService from '../services/customer.service';
+import { toSnakeCase } from '../utils/serializer';
 
 export async function list(
   req: Request,
@@ -17,7 +18,7 @@ export async function list(
       limit: limit ? Number(limit) : undefined,
     });
 
-    res.status(200).json({ data: customers });
+    res.status(200).json({ data: toSnakeCase(customers) });
   } catch (err) {
     next(err);
   }
@@ -38,7 +39,7 @@ export async function show(
       return;
     }
 
-    res.status(200).json(customer);
+    res.status(200).json(toSnakeCase(customer));
   } catch (err) {
     next(err);
   }
@@ -67,7 +68,7 @@ export async function create(
       metadata,
     });
 
-    res.status(201).json(customer);
+    res.status(201).json(toSnakeCase(customer));
   } catch (err) {
     next(err);
   }
@@ -88,14 +89,18 @@ export async function updateMetadata(
       return;
     }
 
-    const customer = await customerService.updateCustomerMetadata(tenantId, id, metadata);
+    const customer = await customerService.updateCustomerMetadata(
+      tenantId,
+      id,
+      metadata,
+    );
 
     if (!customer) {
       res.status(404).json({ error: 'Customer not found' });
       return;
     }
 
-    res.status(200).json(customer);
+    res.status(200).json(toSnakeCase(customer));
   } catch (err) {
     next(err);
   }

@@ -34,7 +34,7 @@ export async function generateDraft(tenant: Tenant, ticketId: number) {
   const embedding = await embed(latestCustomerMessage);
   const kbArticles = await findRelevantArticles(tenant, embedding);
   const pastReplies = await findPastReplies(tenant, embedding, ticketId);
-  const customerContext = await buildCustomerContext(tenant.id, ticket.customer_id);
+  const customerContext = await buildCustomerContext(tenant.id, ticket.customerId);
   const conversationContext = buildConversationContext(messages);
 
   const promptContext = assemblePromptContext(
@@ -60,7 +60,7 @@ export async function generateDraft(tenant: Tenant, ticketId: number) {
 
 function findLatestCustomerMessage(messages: any[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].author_role === 'customer' && messages[i].body) {
+    if (messages[i].authorRole === 'customer' && messages[i].body) {
       return messages[i].body;
     }
   }
@@ -110,7 +110,7 @@ async function buildCustomerContext(tenantId: number, customerId: number | null)
 function buildConversationContext(messages: any[]): string {
   const recentMessages = messages.slice(-5);
   return recentMessages
-    .map((m: any) => `[${m.author_role}]: ${m.body || '(no body)'}`)
+    .map((m: any) => `[${m.authorRole}]: ${m.body || '(no body)'}`)
     .join('\n');
 }
 
@@ -185,9 +185,9 @@ export async function sendDraft(tenant: Tenant, draftId: number) {
     throw new Error(`Draft ${draftId} not found`);
   }
 
-  const ticket = await ticketRepo.findTicketById(tenant.id, draft.ticket_id);
+  const ticket = await ticketRepo.findTicketById(tenant.id, draft.ticketId);
   if (!ticket) {
-    throw new Error(`Ticket ${draft.ticket_id} not found`);
+    throw new Error(`Ticket ${draft.ticketId} not found`);
   }
 
   const providerConfig = await providerRepo.findProvider(tenant.id, ticket.provider);
@@ -195,12 +195,13 @@ export async function sendDraft(tenant: Tenant, draftId: number) {
     throw new Error(`Provider config not found for ${ticket.provider}`);
   }
 
-  const adapter = createProvider({ ...providerConfig.credentials, provider: providerConfig.provider });
-  await adapter.sendReply(ticket.external_id, draft.draft_response);
+  const credentials = providerConfig.credentials as Record<string, any>;
+  const adapter = createProvider({ ...credentials, provider: providerConfig.provider });
+  await adapter.sendReply(ticket.externalId, draft.draftResponse);
 
   await draftRepo.updateDraftStatus(tenant.id, draftId, 'sent');
 
-  logger.info('Draft sent', { tenantId: tenant.id, draftId, ticketId: draft.ticket_id });
+  logger.info('Draft sent', { tenantId: tenant.id, draftId, ticketId: draft.ticketId });
 
   return draftRepo.findDraftById(tenant.id, draftId);
 }

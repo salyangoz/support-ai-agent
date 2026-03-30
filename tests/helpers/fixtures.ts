@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getTestPool } from './testDb';
+import { getTestPrisma } from './testDb';
 
 let counter = 0;
 
@@ -7,108 +7,132 @@ function nextId(): number {
   return ++counter;
 }
 
-export async function createTenant(overrides: Record<string, any> = {}): Promise<any> {
-  const pool = getTestPool();
+export async function createTenant(
+  overrides: Record<string, any> = {},
+): Promise<any> {
+  const prisma = getTestPrisma();
   const n = nextId();
   const data = {
     name: `Test Tenant ${n}`,
     slug: `test-tenant-${n}`,
-    api_key: crypto.randomBytes(24).toString('hex'),
-    settings: JSON.stringify({}),
-    is_active: true,
+    apiKey: crypto.randomBytes(24).toString('hex'),
+    settings: {},
+    isActive: true,
     ...overrides,
   };
 
-  if (typeof data.settings === 'object' && !(typeof data.settings === 'string')) {
-    data.settings = JSON.stringify(data.settings);
+  // Map snake_case overrides to camelCase
+  if (overrides.api_key) {
+    data.apiKey = overrides.api_key;
+  }
+  if (overrides.is_active !== undefined) {
+    data.isActive = overrides.is_active;
   }
 
-  const { rows } = await pool.query(
-    `INSERT INTO tenants (name, slug, api_key, settings, is_active)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [data.name, data.slug, data.api_key, data.settings, data.is_active],
-  );
-  return rows[0];
+  const tenant = await prisma.tenant.create({ data });
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    api_key: tenant.apiKey,
+    settings: tenant.settings,
+    is_active: tenant.isActive,
+    created_at: tenant.createdAt,
+    updated_at: tenant.updatedAt,
+  };
 }
 
 export async function createTenantProvider(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
-  const pool = getTestPool();
+  const prisma = getTestPrisma();
   const data = {
-    provider: 'intercom',
-    credentials: JSON.stringify({ accessToken: 'test-token', clientSecret: 'test-secret' }),
-    webhook_secret: 'test-webhook-secret',
-    is_active: true,
-    ...overrides,
+    tenantId,
+    provider: overrides.provider ?? 'intercom',
+    credentials: overrides.credentials ?? {
+      accessToken: 'test-token',
+      clientSecret: 'test-secret',
+    },
+    webhookSecret: overrides.webhook_secret ?? 'test-webhook-secret',
+    isActive: overrides.is_active ?? true,
   };
 
-  if (typeof data.credentials === 'object' && !(typeof data.credentials === 'string')) {
-    data.credentials = JSON.stringify(data.credentials);
-  }
-
-  const { rows } = await pool.query(
-    `INSERT INTO tenant_providers (tenant_id, provider, credentials, webhook_secret, is_active)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [tenantId, data.provider, data.credentials, data.webhook_secret, data.is_active],
-  );
-  return rows[0];
+  const tp = await prisma.tenantProvider.create({ data });
+  return {
+    id: tp.id,
+    tenant_id: tp.tenantId,
+    provider: tp.provider,
+    credentials: tp.credentials,
+    webhook_secret: tp.webhookSecret,
+    is_active: tp.isActive,
+    created_at: tp.createdAt,
+    updated_at: tp.updatedAt,
+  };
 }
 
 export async function createCustomer(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
-  const pool = getTestPool();
+  const prisma = getTestPrisma();
   const n = nextId();
   const data = {
-    email: `customer${n}@example.com`,
-    name: `Customer ${n}`,
-    phone: null,
-    external_id: `ext-${n}`,
-    metadata: JSON.stringify({}),
-    ...overrides,
+    tenantId,
+    email: overrides.email ?? `customer${n}@example.com`,
+    name: overrides.name ?? `Customer ${n}`,
+    phone: overrides.phone ?? null,
+    externalId: overrides.external_id ?? `ext-${n}`,
+    metadata: overrides.metadata ?? {},
   };
 
-  if (typeof data.metadata === 'object' && !(typeof data.metadata === 'string')) {
-    data.metadata = JSON.stringify(data.metadata);
-  }
-
-  const { rows } = await pool.query(
-    `INSERT INTO customers (tenant_id, email, name, phone, external_id, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [tenantId, data.email, data.name, data.phone, data.external_id, data.metadata],
-  );
-  return rows[0];
+  const c = await prisma.customer.create({ data });
+  return {
+    id: c.id,
+    tenant_id: c.tenantId,
+    email: c.email,
+    name: c.name,
+    phone: c.phone,
+    external_id: c.externalId,
+    metadata: c.metadata,
+    created_at: c.createdAt,
+    updated_at: c.updatedAt,
+  };
 }
 
 export async function createTicket(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
-  const pool = getTestPool();
+  const prisma = getTestPrisma();
   const n = nextId();
   const data = {
-    provider: 'intercom',
-    external_id: `ticket-ext-${n}`,
-    state: 'open',
-    subject: `Test Ticket ${n}`,
-    initial_body: `This is test ticket ${n}`,
-    customer_id: null,
-    language: 'en',
-    assignee_id: null,
-    ...overrides,
+    tenantId,
+    provider: overrides.provider ?? 'intercom',
+    externalId: overrides.external_id ?? `ticket-ext-${n}`,
+    state: overrides.state ?? 'open',
+    subject: overrides.subject ?? `Test Ticket ${n}`,
+    initialBody: overrides.initial_body ?? `This is test ticket ${n}`,
+    customerId: overrides.customer_id ?? null,
+    language: overrides.language ?? 'en',
+    assigneeId: overrides.assignee_id ?? null,
   };
 
-  const { rows } = await pool.query(
-    `INSERT INTO tickets (tenant_id, provider, external_id, state, subject, initial_body,
-     customer_id, language, assignee_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [tenantId, data.provider, data.external_id, data.state, data.subject,
-     data.initial_body, data.customer_id, data.language, data.assignee_id],
-  );
-  return rows[0];
+  const t = await prisma.ticket.create({ data });
+  return {
+    id: t.id,
+    tenant_id: t.tenantId,
+    provider: t.provider,
+    external_id: t.externalId,
+    state: t.state,
+    subject: t.subject,
+    initial_body: t.initialBody,
+    customer_id: t.customerId,
+    language: t.language,
+    assignee_id: t.assigneeId,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+  };
 }
 
 export async function createMessage(
@@ -116,46 +140,59 @@ export async function createMessage(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
-  const pool = getTestPool();
+  const prisma = getTestPrisma();
   const n = nextId();
   const data = {
-    external_id: `msg-ext-${n}`,
-    author_role: 'customer',
-    author_id: null,
-    author_name: null,
-    body: `Test message ${n}`,
-    ...overrides,
+    ticketId,
+    tenantId,
+    externalId: overrides.external_id ?? `msg-ext-${n}`,
+    authorRole: overrides.author_role ?? 'customer',
+    authorId: overrides.author_id ?? null,
+    authorName: overrides.author_name ?? null,
+    body: overrides.body ?? `Test message ${n}`,
   };
 
-  const { rows } = await pool.query(
-    `INSERT INTO messages (ticket_id, tenant_id, external_id, author_role, author_id, author_name, body)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [ticketId, tenantId, data.external_id, data.author_role, data.author_id, data.author_name, data.body],
-  );
-  return rows[0];
+  const m = await prisma.message.create({ data });
+  return {
+    id: m.id,
+    ticket_id: m.ticketId,
+    tenant_id: m.tenantId,
+    external_id: m.externalId,
+    author_role: m.authorRole,
+    author_id: m.authorId,
+    author_name: m.authorName,
+    body: m.body,
+    created_at: m.createdAt,
+  };
 }
 
 export async function createKnowledgeArticle(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
-  const pool = getTestPool();
+  const prisma = getTestPrisma();
   const n = nextId();
   const data = {
-    title: `Article ${n}`,
-    content: `Content for article ${n}`,
-    category: 'general',
-    language: 'en',
-    is_active: true,
-    ...overrides,
+    tenantId,
+    title: overrides.title ?? `Article ${n}`,
+    content: overrides.content ?? `Content for article ${n}`,
+    category: overrides.category ?? 'general',
+    language: overrides.language ?? 'en',
+    isActive: overrides.is_active ?? true,
   };
 
-  const { rows } = await pool.query(
-    `INSERT INTO knowledge_articles (tenant_id, title, content, category, language, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [tenantId, data.title, data.content, data.category, data.language, data.is_active],
-  );
-  return rows[0];
+  const a = await prisma.knowledgeArticle.create({ data });
+  return {
+    id: a.id,
+    tenant_id: a.tenantId,
+    title: a.title,
+    content: a.content,
+    category: a.category,
+    language: a.language,
+    is_active: a.isActive,
+    created_at: a.createdAt,
+    updated_at: a.updatedAt,
+  };
 }
 
 export async function createDraft(
@@ -163,20 +200,29 @@ export async function createDraft(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
-  const pool = getTestPool();
+  const prisma = getTestPrisma();
   const data = {
-    prompt_context: 'Test context',
-    draft_response: 'Test draft response',
-    ai_model: 'deepseek-chat',
-    ai_tokens_used: 100,
-    status: 'pending',
-    ...overrides,
+    ticketId,
+    tenantId,
+    promptContext: overrides.prompt_context ?? 'Test context',
+    draftResponse: overrides.draft_response ?? 'Test draft response',
+    aiModel: overrides.ai_model ?? 'deepseek-chat',
+    aiTokensUsed: overrides.ai_tokens_used ?? 100,
+    status: overrides.status ?? 'pending',
   };
 
-  const { rows } = await pool.query(
-    `INSERT INTO drafts (ticket_id, tenant_id, prompt_context, draft_response, ai_model, ai_tokens_used, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [ticketId, tenantId, data.prompt_context, data.draft_response, data.ai_model, data.ai_tokens_used, data.status],
-  );
-  return rows[0];
+  const d = await prisma.draft.create({ data });
+  return {
+    id: d.id,
+    ticket_id: d.ticketId,
+    tenant_id: d.tenantId,
+    prompt_context: d.promptContext,
+    draft_response: d.draftResponse,
+    ai_model: d.aiModel,
+    ai_tokens_used: d.aiTokensUsed,
+    status: d.status,
+    reviewed_by: d.reviewedBy,
+    reviewed_at: d.reviewedAt,
+    created_at: d.createdAt,
+  };
 }

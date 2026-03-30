@@ -1,21 +1,15 @@
-import { getPool } from '../database/pool';
+import { getPrisma } from '../database/prisma';
 
 export async function findProvidersByTenantId(tenantId: number) {
-  const pool = getPool();
-  const result = await pool.query(
-    'SELECT * FROM tenant_providers WHERE tenant_id = $1',
-    [tenantId],
-  );
-  return result.rows;
+  return getPrisma().tenantProvider.findMany({
+    where: { tenantId },
+  });
 }
 
 export async function findProvider(tenantId: number, provider: string) {
-  const pool = getPool();
-  const result = await pool.query(
-    'SELECT * FROM tenant_providers WHERE tenant_id = $1 AND provider = $2',
-    [tenantId, provider],
-  );
-  return result.rows[0] || null;
+  return getPrisma().tenantProvider.findUnique({
+    where: { tenantId_provider: { tenantId, provider } },
+  });
 }
 
 export async function createProvider(data: {
@@ -24,14 +18,14 @@ export async function createProvider(data: {
   credentials: Record<string, unknown>;
   webhookSecret?: string;
 }) {
-  const pool = getPool();
-  const result = await pool.query(
-    `INSERT INTO tenant_providers (tenant_id, provider, credentials, webhook_secret)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [data.tenantId, data.provider, JSON.stringify(data.credentials), data.webhookSecret || null],
-  );
-  return result.rows[0];
+  return getPrisma().tenantProvider.create({
+    data: {
+      tenantId: data.tenantId,
+      provider: data.provider,
+      credentials: data.credentials as any,
+      webhookSecret: data.webhookSecret ?? null,
+    },
+  });
 }
 
 export async function updateProvider(
@@ -43,47 +37,30 @@ export async function updateProvider(
     isActive?: boolean;
   },
 ) {
-  const pool = getPool();
-  const setClauses: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
+  const updateData: Record<string, unknown> = {};
 
   if (data.credentials !== undefined) {
-    setClauses.push(`credentials = $${paramIndex++}`);
-    values.push(JSON.stringify(data.credentials));
+    updateData.credentials = data.credentials as any;
   }
-
   if (data.webhookSecret !== undefined) {
-    setClauses.push(`webhook_secret = $${paramIndex++}`);
-    values.push(data.webhookSecret);
+    updateData.webhookSecret = data.webhookSecret;
   }
-
   if (data.isActive !== undefined) {
-    setClauses.push(`is_active = $${paramIndex++}`);
-    values.push(data.isActive);
+    updateData.isActive = data.isActive;
   }
 
-  if (setClauses.length === 0) {
+  if (Object.keys(updateData).length === 0) {
     return findProvider(tenantId, provider);
   }
 
-  setClauses.push(`updated_at = NOW()`);
-  values.push(tenantId);
-  values.push(provider);
-
-  const result = await pool.query(
-    `UPDATE tenant_providers SET ${setClauses.join(', ')}
-     WHERE tenant_id = $${paramIndex++} AND provider = $${paramIndex}
-     RETURNING *`,
-    values,
-  );
-  return result.rows[0] || null;
+  return getPrisma().tenantProvider.update({
+    where: { tenantId_provider: { tenantId, provider } },
+    data: updateData,
+  }).catch(() => null);
 }
 
 export async function deleteProvider(tenantId: number, provider: string) {
-  const pool = getPool();
-  await pool.query(
-    'DELETE FROM tenant_providers WHERE tenant_id = $1 AND provider = $2',
-    [tenantId, provider],
-  );
+  await getPrisma().tenantProvider.delete({
+    where: { tenantId_provider: { tenantId, provider } },
+  }).catch(() => null);
 }

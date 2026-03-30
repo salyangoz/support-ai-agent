@@ -1,4 +1,5 @@
-import { getPool } from '../database/pool';
+import { Prisma } from '../generated/prisma/client';
+import { getPrisma } from '../database/prisma';
 
 export async function findCustomersByTenantId(
   tenantId: number,
@@ -9,54 +10,37 @@ export async function findCustomersByTenantId(
     limit?: number;
   },
 ) {
-  const pool = getPool();
-  const conditions: string[] = ['tenant_id = $1'];
-  const values: unknown[] = [tenantId];
-  let paramIndex = 2;
+  const where: Prisma.CustomerWhereInput = { tenantId };
 
   if (opts?.email) {
-    conditions.push(`email = $${paramIndex++}`);
-    values.push(opts.email);
+    where.email = opts.email;
   }
 
   if (opts?.name) {
-    conditions.push(`name ILIKE $${paramIndex++}`);
-    values.push(`%${opts.name}%`);
+    where.name = { contains: opts.name, mode: 'insensitive' };
   }
 
   const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 20;
-  const offset = (page - 1) * limit;
 
-  values.push(limit);
-  values.push(offset);
-
-  const result = await pool.query(
-    `SELECT * FROM customers
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY created_at DESC
-     LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
-    values,
-  );
-  return result.rows;
+  return getPrisma().customer.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    skip: (page - 1) * limit,
+    take: limit,
+  });
 }
 
 export async function findCustomerById(tenantId: number, id: number) {
-  const pool = getPool();
-  const result = await pool.query(
-    'SELECT * FROM customers WHERE tenant_id = $1 AND id = $2',
-    [tenantId, id],
-  );
-  return result.rows[0] || null;
+  return getPrisma().customer.findFirst({
+    where: { tenantId, id },
+  });
 }
 
 export async function findCustomerByEmail(tenantId: number, email: string) {
-  const pool = getPool();
-  const result = await pool.query(
-    'SELECT * FROM customers WHERE tenant_id = $1 AND email = $2',
-    [tenantId, email],
-  );
-  return result.rows[0] || null;
+  return getPrisma().customer.findUnique({
+    where: { tenantId_email: { tenantId, email } },
+  });
 }
 
 export async function upsertCustomer(data: {
@@ -67,27 +51,25 @@ export async function upsertCustomer(data: {
   externalId?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const pool = getPool();
-  const result = await pool.query(
-    `INSERT INTO customers (tenant_id, email, name, phone, external_id, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (tenant_id, email) DO UPDATE SET
-       name = COALESCE(EXCLUDED.name, customers.name),
-       phone = COALESCE(EXCLUDED.phone, customers.phone),
-       external_id = COALESCE(EXCLUDED.external_id, customers.external_id),
-       metadata = COALESCE(EXCLUDED.metadata, customers.metadata),
-       updated_at = NOW()
-     RETURNING *`,
-    [
-      data.tenantId,
-      data.email,
-      data.name || null,
-      data.phone || null,
-      data.externalId || null,
-      data.metadata ? JSON.stringify(data.metadata) : null,
-    ],
-  );
-  return result.rows[0];
+  return getPrisma().customer.upsert({
+    where: {
+      tenantId_email: { tenantId: data.tenantId, email: data.email },
+    },
+    create: {
+      tenantId: data.tenantId,
+      email: data.email,
+      name: data.name ?? null,
+      phone: data.phone ?? null,
+      externalId: data.externalId ?? null,
+      metadata: (data.metadata ?? {}) as any,
+    },
+    update: {
+      name: data.name ?? undefined,
+      phone: data.phone ?? undefined,
+      externalId: data.externalId ?? undefined,
+      metadata: data.metadata ? (data.metadata as any) : undefined,
+    },
+  });
 }
 
 export async function updateCustomerMetadata(
@@ -95,12 +77,9 @@ export async function updateCustomerMetadata(
   id: number,
   metadata: Record<string, unknown>,
 ) {
-  const pool = getPool();
-  const result = await pool.query(
-    `UPDATE customers SET metadata = $1, updated_at = NOW()
-     WHERE tenant_id = $2 AND id = $3
-     RETURNING *`,
-    [JSON.stringify(metadata), tenantId, id],
-  );
-  return result.rows[0] || null;
+  return getPrisma().customer.update({
+    where: { id },
+    data: { metadata: metadata as any },
+  }).then((c) => (c.tenantId === tenantId ? c : null))
+    .catch(() => null);
 }

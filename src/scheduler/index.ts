@@ -13,11 +13,11 @@ export function startScheduler(): void {
 
       for (const tenant of tenants) {
         const providers = await tenantProviderService.getProviders(tenant.id);
-        const activeProviders = providers.filter(p => p.is_active);
+        const activeProviders = providers.filter((p: any) => p.isActive);
 
         for (const providerConfig of activeProviders) {
           try {
-            await ticketSyncService.syncTenantProvider(tenant, providerConfig);
+            await ticketSyncService.syncTenantProvider(tenant as any, providerConfig as any);
             logger.info(`Synced ${providerConfig.provider} for tenant ${tenant.slug}`);
           } catch (err) {
             logger.error(`Sync failed for tenant ${tenant.slug}, provider ${providerConfig.provider}`, err);

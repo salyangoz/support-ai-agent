@@ -1,30 +1,21 @@
-import { getPool } from '../database/pool';
+import { getPrisma } from '../database/prisma';
 
 export async function findTenantById(id: number) {
-  const pool = getPool();
-  const result = await pool.query('SELECT * FROM tenants WHERE id = $1', [id]);
-  return result.rows[0] || null;
+  return getPrisma().tenant.findUnique({ where: { id } });
 }
 
 export async function findTenantBySlug(slug: string) {
-  const pool = getPool();
-  const result = await pool.query('SELECT * FROM tenants WHERE slug = $1', [slug]);
-  return result.rows[0] || null;
+  return getPrisma().tenant.findUnique({ where: { slug } });
 }
 
 export async function findTenantByApiKey(apiKey: string) {
-  const pool = getPool();
-  const result = await pool.query(
-    'SELECT * FROM tenants WHERE api_key = $1 AND is_active = true',
-    [apiKey],
-  );
-  return result.rows[0] || null;
+  return getPrisma().tenant.findFirst({
+    where: { apiKey, isActive: true },
+  });
 }
 
 export async function findAllActiveTenants() {
-  const pool = getPool();
-  const result = await pool.query('SELECT * FROM tenants WHERE is_active = true');
-  return result.rows;
+  return getPrisma().tenant.findMany({ where: { isActive: true } });
 }
 
 export async function createTenant(data: {
@@ -33,14 +24,14 @@ export async function createTenant(data: {
   apiKey: string;
   settings?: Record<string, unknown>;
 }) {
-  const pool = getPool();
-  const result = await pool.query(
-    `INSERT INTO tenants (name, slug, api_key, settings)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [data.name, data.slug, data.apiKey, data.settings ? JSON.stringify(data.settings) : null],
-  );
-  return result.rows[0];
+  return getPrisma().tenant.create({
+    data: {
+      name: data.name,
+      slug: data.slug,
+      apiKey: data.apiKey,
+      settings: (data.settings ?? {}) as any,
+    },
+  });
 }
 
 export async function updateTenant(
@@ -51,36 +42,24 @@ export async function updateTenant(
     isActive?: boolean;
   },
 ) {
-  const pool = getPool();
-  const setClauses: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
+  const updateData: Record<string, unknown> = {};
 
   if (data.name !== undefined) {
-    setClauses.push(`name = $${paramIndex++}`);
-    values.push(data.name);
+    updateData.name = data.name;
   }
-
   if (data.settings !== undefined) {
-    setClauses.push(`settings = $${paramIndex++}`);
-    values.push(JSON.stringify(data.settings));
+    updateData.settings = data.settings;
   }
-
   if (data.isActive !== undefined) {
-    setClauses.push(`is_active = $${paramIndex++}`);
-    values.push(data.isActive);
+    updateData.isActive = data.isActive;
   }
 
-  if (setClauses.length === 0) {
+  if (Object.keys(updateData).length === 0) {
     return findTenantById(id);
   }
 
-  setClauses.push(`updated_at = NOW()`);
-  values.push(id);
-
-  const result = await pool.query(
-    `UPDATE tenants SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-    values,
-  );
-  return result.rows[0] || null;
+  return getPrisma().tenant.update({
+    where: { id },
+    data: updateData,
+  }).catch(() => null);
 }

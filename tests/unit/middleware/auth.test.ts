@@ -55,7 +55,7 @@ describe('Auth Middleware', () => {
   describe('tenantAuth', () => {
     it('should set req.tenant with valid API key', async () => {
       const tenantRepo = await import('../../../src/repositories/tenant.repository');
-      const mockTenant = { id: 1, name: 'Test', slug: 'test', api_key: 'tenant-key', is_active: true };
+      const mockTenant = { id: 1, name: 'Test', slug: 'test', apiKey: 'tenant-key', isActive: true };
       vi.mocked(tenantRepo.findTenantByApiKey).mockResolvedValue(mockTenant as any);
 
       const { tenantAuth } = await import('../../../src/middleware/auth');
@@ -80,7 +80,7 @@ describe('Auth Middleware', () => {
 
     it('should return 403 if tenantId does not match', async () => {
       const tenantRepo = await import('../../../src/repositories/tenant.repository');
-      const mockTenant = { id: 1, name: 'Test', slug: 'test', api_key: 'tenant-key', is_active: true };
+      const mockTenant = { id: 1, name: 'Test', slug: 'test', apiKey: 'tenant-key', isActive: true };
       vi.mocked(tenantRepo.findTenantByApiKey).mockResolvedValue(mockTenant as any);
 
       const { tenantAuth } = await import('../../../src/middleware/auth');
