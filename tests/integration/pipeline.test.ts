@@ -23,10 +23,7 @@ import axios from 'axios';
 import * as webhookHandler from '../../src/services/webhookHandler.service';
 import * as aiDraftService from '../../src/services/aiDraft.service';
 import * as ticketSyncService from '../../src/services/ticketSync.service';
-import * as ticketRepo from '../../src/repositories/ticket.repository';
-import * as messageRepo from '../../src/repositories/message.repository';
-import * as draftRepo from '../../src/repositories/draft.repository';
-import * as customerRepo from '../../src/repositories/customer.repository';
+import { createInputApp } from '../../src/apps/app.factory';
 import { resolveOutputApps } from '../../src/apps/app.resolver';
 import { Tenant, App } from '../../src/models/types';
 
@@ -478,6 +475,77 @@ describe('E2E Pipeline Integration Tests', () => {
           message_type: 'comment',
         }),
       );
+    });
+  });
+
+  describe('Ticket Sync: Polling → DB Storage', () => {
+    it('should fetch tickets from input app and store in DB with messages', async () => {
+      const tenant = await createTestTenant({ sync_lookback_minutes: 15 });
+      const app = await createTestApp(tenant.id);
+
+      // Mock the Intercom API calls that the real IntercomInputApp makes
+      const mockIntercomGet = vi.fn().mockResolvedValue({
+        data: {
+          conversation_parts: { conversation_parts: [
+            { id: 'part-1', body: 'I need help', author: { type: 'user', id: 'u1', name: 'Alice' }, created_at: 1700000000 },
+            { id: 'part-2', body: 'Let me check', author: { type: 'admin', id: 'a1', name: 'Support' }, created_at: 1700000100 },
+          ] },
+        },
+      });
+      const mockIntercomPost = vi.fn().mockResolvedValue({
+        data: {
+          conversations: [
+            {
+              id: 'conv-sync-1',
+              state: 'open',
+              title: 'Order problem',
+              source: { body: '<p>My order is late</p>', author: { type: 'user', id: 'u1' } },
+              contacts: { contacts: [{ id: 'u1', email: 'sync-test@test.com', name: 'Sync User' }] },
+              created_at: 1700000000,
+              updated_at: 1700000200,
+            },
+          ],
+        },
+      });
+
+      vi.mocked(axios.create).mockReturnValue({
+        post: mockIntercomPost,
+        get: mockIntercomGet,
+      } as any);
+
+      // Mock embedding for agent messages
+      vi.mocked(axios.post).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/embed')) {
+          return { data: { vector: Array(1536).fill(0.02) } };
+        }
+        return { data: {} };
+      });
+
+      await ticketSyncService.syncInputApp(tenant, app as any);
+
+      // Verify ticket was created in DB
+      const tickets = await prisma.ticket.findMany({ where: { tenantId: tenant.id } });
+      expect(tickets).toHaveLength(1);
+      expect(tickets[0].externalId).toBe('conv-sync-1');
+      expect(tickets[0].inputAppId).toBe(app.id);
+      expect(tickets[0].state).toBe('open');
+
+      // Verify customer was created
+      const customers = await prisma.customer.findMany({ where: { tenantId: tenant.id } });
+      expect(customers).toHaveLength(1);
+      expect(customers[0].email).toBe('sync-test@test.com');
+
+      // Verify messages were stored
+      const messages = await prisma.message.findMany({ where: { tenantId: tenant.id } });
+      expect(messages.length).toBeGreaterThanOrEqual(2);
+
+      // Verify agent message got embedded
+      const { rows } = await pool.query(
+        'SELECT embedding IS NOT NULL as has_embedding FROM messages WHERE tenant_id = $1 AND author_role = $2',
+        [tenant.id, 'agent'],
+      );
+      const agentEmbedded = rows.filter((r: any) => r.has_embedding);
+      expect(agentEmbedded.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
