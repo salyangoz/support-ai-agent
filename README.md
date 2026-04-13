@@ -4,32 +4,174 @@ Multi-tenant, app-based AI draft response microservice for customer support tick
 
 ## Architecture
 
+### System Overview
+
+```mermaid
+flowchart TB
+    subgraph INPUT["INPUT APPS (Source)"]
+        IC[Intercom]
+        ZD[Zendesk]
+        EM[Email]
+    end
+
+    subgraph KNOWLEDGE["KNOWLEDGE APPS"]
+        NT[Notion]
+        CF[Confluence]
+    end
+
+    subgraph CORE["SUPPORT AI AGENT"]
+        direction TB
+        NORM[Normalize via Adapter]
+        DB[(PostgreSQL + pgvector)]
+        RAG[RAG Pipeline]
+        DRAFT[AI Draft Generation]
+        REVIEW[Agent Review]
+        RESOLVER[Output Resolver]
+
+        NORM --> DB
+        DB --> RAG
+        RAG --> DRAFT
+        DRAFT --> REVIEW
+        REVIEW --> RESOLVER
+    end
+
+    subgraph OUTPUT["OUTPUT APPS (Destination)"]
+        IC2[Intercom]
+        ZD2[Zendesk]
+        SL[Slack]
+    end
+
+    IC -- "Webhook / Polling" --> NORM
+    ZD -- "Webhook / Polling" --> NORM
+    EM -- "Polling" --> NORM
+    NT -- "Article Sync" --> DB
+    CF -- "Article Sync" --> DB
+    RESOLVER -- "Fan-out" --> IC2
+    RESOLVER -- "Fan-out" --> ZD2
+    RESOLVER -- "Fan-out" --> SL
 ```
-Input Apps (Intercom, Zendesk, ...)       Knowledge Apps (Notion, Confluence, ...)
-        |                                          |
-   Webhook / Polling                         Article Sync
-        |                                          |
-        v                                          v
-  Normalize (Adapter)                     Normalize (Adapter)
-        |                                          |
-        v                                          v
-  Upsert Ticket + Customer               Upsert KB Articles + Embed
-        |
-        v
-  RAG Pipeline
-  ├── Embed customer message
-  ├── pgvector search: KB articles + past agent replies
-  ├── Build customer context (metadata, history)
-  └── Call AI -> Draft response
-        |
-        v
-  Agent Review (approve/reject/send)
-        |
-        v
-  Output Apps (fan-out)
-  ├── Reply to Intercom
-  ├── Reply to Zendesk
-  └── Notify on Slack
+
+### Ticket Lifecycle
+
+```mermaid
+flowchart LR
+    A[Customer sends message] --> B[Input App receives]
+    B --> C{Webhook or Polling?}
+    C -- Webhook --> D[Verify signature]
+    C -- Polling --> E[Fetch recent tickets]
+    D --> F[Normalize & Store]
+    E --> F
+    F --> G[Embed customer message]
+    G --> H[RAG: Search KB + Past Replies]
+    H --> I[Build context + Call AI]
+    I --> J[Save Draft as 'pending']
+    J --> K{Agent Decision}
+    K -- Approve --> L[Resolve Output Apps]
+    K -- Reject --> M[Draft discarded]
+    K -- "Auto-send enabled" --> L
+    L --> N[Send via Output App]
+    N --> O[Customer receives reply]
+```
+
+### RAG Pipeline Detail
+
+```mermaid
+flowchart TB
+    MSG[Latest Customer Message] --> EMBED[Embed via ai.yengec.co/embed]
+    EMBED --> VEC[1536-dim Vector]
+
+    VEC --> KB_SEARCH[pgvector: Find similar KB Articles]
+    VEC --> REPLY_SEARCH[pgvector: Find similar Past Agent Replies]
+
+    TICKET[Ticket Data] --> CUST_CTX[Build Customer Context]
+    TICKET --> CONV_CTX[Build Conversation Context - last 5 messages]
+
+    KB_SEARCH --> CONTEXT[Assemble Prompt Context]
+    REPLY_SEARCH --> CONTEXT
+    CUST_CTX --> CONTEXT
+    CONV_CTX --> CONTEXT
+
+    CONTEXT --> AI["AI Service (ai.yengec.co/chat)"]
+    MSG --> AI
+    AI --> DRAFT[Draft Response]
+    DRAFT --> DB[(Save to drafts table)]
+
+    style EMBED fill:#e1f5fe
+    style AI fill:#e1f5fe
+    style KB_SEARCH fill:#f3e5f5
+    style REPLY_SEARCH fill:#f3e5f5
+```
+
+### Output Routing (Fan-out)
+
+```mermaid
+flowchart TB
+    SEND["sendDraft() called"] --> CHECK1{ticket.output_app_id set?}
+    CHECK1 -- Yes --> SINGLE[Use that single app]
+    CHECK1 -- No --> CHECK2{tenant.settings.output_app_ids set?}
+    CHECK2 -- Yes --> FANOUT["Fan-out: send to ALL listed apps"]
+    CHECK2 -- No --> CHECK3{input app role = 'both'?}
+    CHECK3 -- Yes --> FALLBACK[Reply to same input app]
+    CHECK3 -- No --> ERROR[Error: No output configured]
+
+    FANOUT --> PARALLEL["Promise.allSettled()"]
+    PARALLEL --> APP1[Output App 1]
+    PARALLEL --> APP2[Output App 2]
+    PARALLEL --> APP3[Output App N]
+
+    style FANOUT fill:#e8f5e9
+    style PARALLEL fill:#e8f5e9
+    style ERROR fill:#ffebee
+```
+
+### App Model
+
+```mermaid
+erDiagram
+    TENANT ||--o{ APP : has
+    TENANT ||--o{ TICKET : has
+    APP ||--o{ TICKET : "input_app"
+    APP ||--o{ TICKET : "output_app"
+    TICKET ||--o{ MESSAGE : contains
+    TICKET ||--o{ DRAFT : has
+    TENANT ||--o{ KNOWLEDGE_ARTICLE : has
+
+    APP {
+        int id PK
+        int tenant_id FK
+        string code "intercom, zendesk, slack..."
+        string type "ticket, knowledge, notification"
+        string role "source, destination, both"
+        string name "Human-readable label"
+        json credentials "Service-specific auth"
+        json config "Extra settings"
+        boolean is_active
+    }
+
+    TICKET {
+        int id PK
+        int tenant_id FK
+        int input_app_id FK
+        int output_app_id FK
+        string external_id
+        string state "open, closed"
+    }
+
+    DRAFT {
+        int id PK
+        int ticket_id FK
+        string draft_response
+        string status "pending, approved, rejected, sent"
+        string ai_model
+    }
+
+    MESSAGE {
+        int id PK
+        int ticket_id FK
+        string author_role "customer, agent, bot"
+        string body
+        vector embedding "1536-dim for RAG"
+    }
 ```
 
 ### Key Design Pillars
