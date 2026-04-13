@@ -1,13 +1,13 @@
 import axios from 'axios';
 import { config, defaults } from '../config';
 import { embed } from './embedding.service';
-import { createProvider } from '../providers/provider.factory';
+import { createOutputApp } from '../apps/app.factory';
+import { resolveOutputApps } from '../apps/app.resolver';
 import * as ticketRepo from '../repositories/ticket.repository';
 import * as messageRepo from '../repositories/message.repository';
 import * as articleRepo from '../repositories/knowledgeArticle.repository';
 import * as customerRepo from '../repositories/customer.repository';
 import * as draftRepo from '../repositories/draft.repository';
-import * as providerRepo from '../repositories/tenantProvider.repository';
 import { Tenant, TenantSettings } from '../models/types';
 import { logger } from '../utils/logger';
 
@@ -190,18 +190,47 @@ export async function sendDraft(tenant: Tenant, draftId: number) {
     throw new Error(`Ticket ${draft.ticketId} not found`);
   }
 
-  const providerConfig = await providerRepo.findProvider(tenant.id, ticket.provider);
-  if (!providerConfig) {
-    throw new Error(`Provider config not found for ${ticket.provider}`);
+  const outputApps = await resolveOutputApps(
+    tenant.id,
+    ticket,
+    tenant.settings,
+  );
+
+  // Fan-out: send to all resolved output apps in parallel
+  const results = await Promise.allSettled(
+    outputApps.map(async (app) => {
+      const adapter = createOutputApp(app);
+      await adapter.sendReply(ticket.externalId, draft.draftResponse);
+      return app;
+    }),
+  );
+
+  // Log results
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      logger.info('Draft sent', {
+        tenantId: tenant.id,
+        draftId,
+        ticketId: draft.ticketId,
+        appId: result.value.id,
+        appCode: result.value.code,
+      });
+    } else {
+      logger.error('Draft send failed to app', {
+        tenantId: tenant.id,
+        draftId,
+        ticketId: draft.ticketId,
+        error: result.reason?.message,
+      });
+    }
   }
 
-  const credentials = providerConfig.credentials as Record<string, any>;
-  const adapter = createProvider({ ...credentials, provider: providerConfig.provider });
-  await adapter.sendReply(ticket.externalId, draft.draftResponse);
+  const anySuccess = results.some((r) => r.status === 'fulfilled');
+  if (!anySuccess) {
+    throw new Error('Failed to send draft to all output apps');
+  }
 
   await draftRepo.updateDraftStatus(tenant.id, draftId, 'sent');
-
-  logger.info('Draft sent', { tenantId: tenant.id, draftId, ticketId: draft.ticketId });
 
   return draftRepo.findDraftById(tenant.id, draftId);
 }

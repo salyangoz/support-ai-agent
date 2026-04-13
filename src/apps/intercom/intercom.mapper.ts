@@ -1,4 +1,4 @@
-import { NormalizedTicket, NormalizedMessage } from '../provider.interface';
+import { NormalizedTicket, NormalizedMessage } from '../app.interface';
 import { IntercomConversation, IntercomConversationPart } from './intercom.types';
 import { htmlToText } from '../../utils/htmlToText';
 

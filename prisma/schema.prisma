@@ -19,7 +19,7 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  providers         TenantProvider[]
+  apps              App[]
   customers         Customer[]
   tickets           Ticket[]
   messages          Message[]
@@ -29,21 +29,29 @@ model Tenant {
   @@map("tenants")
 }
 
-model TenantProvider {
+model App {
   id            Int      @id @default(autoincrement())
   tenantId      Int      @map("tenant_id")
-  provider      String   @db.VarChar(30)
+  code          String   @db.VarChar(30)
+  type          String   @db.VarChar(20)
+  role          String   @db.VarChar(15)
+  name          String?  @db.VarChar(100)
   credentials   Json     @default("{}")
   webhookSecret String?  @map("webhook_secret") @db.VarChar(255)
+  config        Json     @default("{}")
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  inputTickets  Ticket[] @relation("InputApp")
+  outputTickets Ticket[] @relation("OutputApp")
 
-  @@unique([tenantId, provider])
   @@index([tenantId])
-  @@map("tenant_providers")
+  @@index([tenantId, type, role])
+  @@index([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("apps")
 }
 
 model Customer {
@@ -70,7 +78,8 @@ model Ticket {
   id                Int       @id @default(autoincrement())
   tenantId          Int       @map("tenant_id")
   customerId        Int?      @map("customer_id")
-  provider          String    @db.VarChar(30)
+  inputAppId        Int?      @map("input_app_id")
+  outputAppId       Int?      @map("output_app_id")
   externalId        String    @map("external_id") @db.VarChar(128)
   state             String    @default("open") @db.VarChar(20)
   subject           String?
@@ -83,14 +92,18 @@ model Ticket {
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  customer Customer? @relation(fields: [customerId], references: [id])
-  messages Message[]
-  drafts   Draft[]
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  customer  Customer? @relation(fields: [customerId], references: [id])
+  inputApp  App?      @relation("InputApp", fields: [inputAppId], references: [id])
+  outputApp App?      @relation("OutputApp", fields: [outputAppId], references: [id])
+  messages  Message[]
+  drafts    Draft[]
 
-  @@unique([tenantId, provider, externalId])
+  @@unique([tenantId, inputAppId, externalId])
   @@index([tenantId, state])
   @@index([customerId])
+  @@index([inputAppId])
+  @@index([outputAppId])
   @@map("tickets")
 }
 

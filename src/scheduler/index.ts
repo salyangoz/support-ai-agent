@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import * as tenantService from '../services/tenant.service';
-import * as tenantProviderService from '../services/tenantProvider.service';
+import * as appService from '../services/app.service';
 import * as ticketSyncService from '../services/ticketSync.service';
 
 export function startScheduler(): void {
@@ -12,15 +12,14 @@ export function startScheduler(): void {
       const tenants = await tenantService.getActiveTenants();
 
       for (const tenant of tenants) {
-        const providers = await tenantProviderService.getProviders(tenant.id);
-        const activeProviders = providers.filter((p: any) => p.isActive);
+        const inputApps = await appService.getActiveInputApps(tenant.id);
 
-        for (const providerConfig of activeProviders) {
+        for (const app of inputApps) {
           try {
-            await ticketSyncService.syncTenantProvider(tenant as any, providerConfig as any);
-            logger.info(`Synced ${providerConfig.provider} for tenant ${tenant.slug}`);
+            await ticketSyncService.syncInputApp(tenant as any, app as any);
+            logger.info(`Synced app ${app.code} (id: ${app.id}) for tenant ${tenant.slug}`);
           } catch (err) {
-            logger.error(`Sync failed for tenant ${tenant.slug}, provider ${providerConfig.provider}`, err);
+            logger.error(`Sync failed for tenant ${tenant.slug}, app ${app.code} (id: ${app.id})`, err);
           }
         }
       }

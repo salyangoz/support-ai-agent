@@ -1,15 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { findTenantBySlug } from '../repositories/tenant.repository';
-import { findProvider } from '../repositories/tenantProvider.repository';
-import { createProvider } from '../providers/provider.factory';
-import { Tenant, TenantProvider } from '../models/types';
-import { TicketProvider } from '../providers/provider.interface';
+import { findAppById } from '../repositories/app.repository';
+import { createInputApp } from '../apps/app.factory';
+import { Tenant, App } from '../models/types';
+import { InputApp } from '../apps/app.interface';
 
 declare global {
   namespace Express {
     interface Request {
-      tenantProvider?: TenantProvider;
-      providerAdapter?: TicketProvider;
+      tenantApp?: App;
+      inputApp?: InputApp;
     }
   }
 }
@@ -20,7 +20,7 @@ export async function webhookAuth(
   next: NextFunction,
 ): Promise<void> {
   const tenantSlug = req.params.tenantSlug as string;
-  const provider = req.params.provider as string;
+  const appIdParam = req.params.appId as string;
 
   try {
     const tenant = await findTenantBySlug(tenantSlug) as Tenant | null;
@@ -35,25 +35,32 @@ export async function webhookAuth(
       return;
     }
 
-    const tenantProvider = await findProvider(
-      tenant.id,
-      provider,
-    ) as TenantProvider | null;
+    const appId = Number(appIdParam);
+    if (isNaN(appId)) {
+      res.status(400).json({ error: 'Invalid app ID' });
+      return;
+    }
 
-    if (!tenantProvider) {
+    const app = await findAppById(tenant.id, appId) as App | null;
+
+    if (!app) {
       res.status(400).json({
-        error: 'Provider not configured for this tenant',
+        error: 'App not configured for this tenant',
       });
       return;
     }
 
-    if (!tenantProvider.isActive) {
-      res.status(400).json({ error: 'Provider is inactive' });
+    if (!app.isActive) {
+      res.status(400).json({ error: 'App is inactive' });
       return;
     }
 
-    const credentials = tenantProvider.credentials as Record<string, any>;
-    const adapter = createProvider({ ...credentials, provider });
+    if (app.type !== 'ticket' || app.role === 'destination') {
+      res.status(400).json({ error: 'App is not configured as an input source' });
+      return;
+    }
+
+    const adapter = createInputApp(app);
     const rawBody = req.body as Buffer;
 
     const isValid = adapter.verifyWebhook(rawBody, req.headers);
@@ -64,8 +71,8 @@ export async function webhookAuth(
     }
 
     req.tenant = tenant;
-    req.tenantProvider = tenantProvider;
-    req.providerAdapter = adapter;
+    req.tenantApp = app;
+    req.inputApp = adapter;
     next();
   } catch (error) {
     next(error);

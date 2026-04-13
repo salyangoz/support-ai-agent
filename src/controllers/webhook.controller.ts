@@ -9,11 +9,11 @@ export async function receive(
 ): Promise<void> {
   try {
     const tenant = req.tenant!;
-    const tenantProvider = req.tenantProvider!;
-    const providerAdapter = req.providerAdapter!;
+    const app = req.tenantApp!;
+    const inputApp = req.inputApp!;
 
     const rawBody = req.body as Buffer;
-    const event = providerAdapter.parseWebhook(rawBody, req.headers);
+    const event = inputApp.parseWebhook(rawBody, req.headers);
 
     if (!event) {
       res.status(200).json({ message: 'Event ignored' });
@@ -23,10 +23,11 @@ export async function receive(
     res.status(200).json({ message: 'Webhook received' });
 
     setImmediate(() => {
-      webhookHandlerService.handleEvent(tenant, tenantProvider, event).catch((err) => {
+      webhookHandlerService.handleEvent(tenant, app, event).catch((err) => {
         logger.error('Webhook handler failed', {
           tenantId: tenant.id,
-          provider: tenantProvider.provider,
+          appId: app.id,
+          appCode: app.code,
           error: err.message,
         });
       });

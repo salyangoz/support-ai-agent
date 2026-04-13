@@ -20,14 +20,19 @@ export interface TenantSettings {
   draft_tone?: string;
   max_context_tokens?: number;
   sync_lookback_minutes?: number;
+  output_app_ids?: number[];
 }
 
-export interface TenantProvider {
+export interface App {
   id: number;
   tenantId: number;
-  provider: string;
+  code: string;
+  type: string;
+  role: string;
+  name: string | null;
   credentials: Record<string, any>;
   webhookSecret: string | null;
+  config: Record<string, any>;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -49,7 +54,8 @@ export interface Ticket {
   id: number;
   tenantId: number;
   customerId: number | null;
-  provider: string;
+  inputAppId: number | null;
+  outputAppId: number | null;
   externalId: string;
   state: string;
   subject: string | null;

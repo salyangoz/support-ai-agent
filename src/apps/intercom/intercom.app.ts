@@ -1,5 +1,6 @@
-import axios, { AxiosInstance } from 'axios';
-import { TicketProvider, NormalizedTicket, NormalizedMessage, WebhookEvent } from '../provider.interface';
+import { AxiosInstance } from 'axios';
+import { InputApp, OutputApp, NormalizedTicket, NormalizedMessage, WebhookEvent, SendReplyOptions } from '../app.interface';
+import { createIntercomClient } from './intercom.http';
 import { mapConversationToTicket, mapConversationPartsToMessages, mapInitialMessageToNormalized } from './intercom.mapper';
 import { verifyIntercomWebhook, parseIntercomWebhook } from './intercom.webhook';
 import { logger } from '../../utils/logger';
@@ -9,21 +10,13 @@ export interface IntercomCredentials {
   clientSecret: string;
 }
 
-export class IntercomAdapter implements TicketProvider {
+export class IntercomInputApp implements InputApp {
   private client: AxiosInstance;
   private credentials: IntercomCredentials;
 
   constructor(credentials: IntercomCredentials) {
     this.credentials = credentials;
-    this.client = axios.create({
-      baseURL: 'https://api.intercom.io',
-      headers: {
-        'Authorization': `Bearer ${credentials.accessToken}`,
-        'Content-Type': 'application/json',
-        'Intercom-Version': '2.11',
-      },
-      timeout: 15000,
-    });
+    this.client = createIntercomClient(credentials.accessToken);
   }
 
   async fetchRecentTickets(sinceMinutes: number): Promise<NormalizedTicket[]> {
@@ -74,24 +67,6 @@ export class IntercomAdapter implements TicketProvider {
     }
   }
 
-  async sendReply(
-    externalTicketId: string,
-    body: string,
-    adminId?: string,
-  ): Promise<void> {
-    try {
-      await this.client.post(`/conversations/${externalTicketId}/reply`, {
-        message_type: 'comment',
-        type: 'admin',
-        admin_id: adminId || 'default',
-        body,
-      });
-    } catch (err) {
-      logger.error(`Failed to send reply to conversation ${externalTicketId}`, err);
-      throw err;
-    }
-  }
-
   verifyWebhook(rawBody: Buffer, headers: Record<string, any>): boolean {
     return verifyIntercomWebhook(rawBody, headers, this.credentials.clientSecret);
   }
@@ -103,6 +78,32 @@ export class IntercomAdapter implements TicketProvider {
     } catch (err) {
       logger.error('Failed to parse Intercom webhook', err);
       return null;
+    }
+  }
+}
+
+export class IntercomOutputApp implements OutputApp {
+  private client: AxiosInstance;
+
+  constructor(credentials: Pick<IntercomCredentials, 'accessToken'>) {
+    this.client = createIntercomClient(credentials.accessToken);
+  }
+
+  async sendReply(
+    externalTicketId: string,
+    body: string,
+    options?: SendReplyOptions,
+  ): Promise<void> {
+    try {
+      await this.client.post(`/conversations/${externalTicketId}/reply`, {
+        message_type: 'comment',
+        type: 'admin',
+        admin_id: options?.adminId || 'default',
+        body,
+      });
+    } catch (err) {
+      logger.error(`Failed to send reply to conversation ${externalTicketId}`, err);
+      throw err;
     }
   }
 }

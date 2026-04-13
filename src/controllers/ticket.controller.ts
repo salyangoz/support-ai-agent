@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import * as ticketService from '../services/ticket.service';
 import * as ticketSyncService from '../services/ticketSync.service';
-import * as tenantProviderService from '../services/tenantProvider.service';
+import * as appService from '../services/app.service';
+import * as ticketRepo from '../repositories/ticket.repository';
 import { toSnakeCase } from '../utils/serializer';
 import { logger } from '../utils/logger';
 
@@ -12,10 +13,10 @@ export async function list(
 ): Promise<void> {
   try {
     const tenantId = Number(req.params.tenantId);
-    const { provider, state, customer_id, page, limit } = req.query;
+    const { input_app_id, state, customer_id, page, limit } = req.query;
 
     const tickets = await ticketService.getTickets(tenantId, {
-      provider: provider as string | undefined,
+      inputAppId: input_app_id ? Number(input_app_id) : undefined,
       state: state as string | undefined,
       customerId: customer_id ? Number(customer_id) : undefined,
       page: page ? Number(page) : undefined,
@@ -57,22 +58,19 @@ export async function sync(
 ): Promise<void> {
   try {
     const tenantId = Number(req.params.tenantId);
-    const { provider } = req.body;
+    const { app_id } = req.body;
 
-    if (!provider) {
-      res.status(400).json({ error: 'provider is required' });
+    if (!app_id) {
+      res.status(400).json({ error: 'app_id is required' });
       return;
     }
 
     const tenant = req.tenant!;
-    const providerConfig = await tenantProviderService.getProvider(
-      tenantId,
-      provider,
-    );
+    const app = await appService.getApp(tenantId, Number(app_id));
 
-    if (!providerConfig) {
+    if (!app) {
       res.status(404).json({
-        error: 'Provider not configured for this tenant',
+        error: 'App not configured for this tenant',
       });
       return;
     }
@@ -81,15 +79,54 @@ export async function sync(
 
     setImmediate(() => {
       ticketSyncService
-        .syncTenantProvider(tenant as any, providerConfig as any)
+        .syncInputApp(tenant as any, app as any)
         .catch((err: any) => {
           logger.error('Background sync failed', {
             tenantId,
-            provider,
+            appId: app.id,
+            appCode: app.code,
             error: err.message,
           });
         });
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateOutputApp(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = Number(req.params.tenantId);
+    const ticketId = Number(req.params.id);
+    const { output_app_id } = req.body;
+
+    if (!output_app_id) {
+      res.status(400).json({ error: 'output_app_id is required' });
+      return;
+    }
+
+    const app = await appService.getApp(tenantId, Number(output_app_id));
+    if (!app) {
+      res.status(404).json({ error: 'Output app not found' });
+      return;
+    }
+
+    if (app.role === 'source') {
+      res.status(400).json({ error: 'App is not configured as a destination' });
+      return;
+    }
+
+    const ticket = await ticketRepo.updateTicketOutputApp(tenantId, ticketId, Number(output_app_id));
+    if (!ticket) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
+
+    res.status(200).json(toSnakeCase(ticket));
   } catch (err) {
     next(err);
   }

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { WebhookEvent } from '../provider.interface';
+import { WebhookEvent } from '../app.interface';
 import { IntercomWebhookPayload } from './intercom.types';
 
 const TOPIC_MAP: Record<string, WebhookEvent['type']> = {
