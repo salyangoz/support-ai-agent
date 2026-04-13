@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+import { createApp as createExpressApp } from '../../src/index';
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import {
   createTenant,
@@ -9,10 +9,10 @@ import {
   createMessage,
   createKnowledgeArticle,
   createDraft,
-  createTenantProvider,
+  createApp,
 } from '../helpers/fixtures';
 
-const app = createApp();
+const app = createExpressApp();
 const request = supertest(app);
 
 describe('Feature: Tenant Isolation', () => {
@@ -36,7 +36,7 @@ describe('Feature: Tenant Isolation', () => {
     await createMessage(ticketA.id, tenantA.id, { body: 'A message' });
     await createKnowledgeArticle(tenantA.id, { title: 'A article' });
     await createDraft(ticketA.id, tenantA.id, { draft_response: 'A draft' });
-    await createTenantProvider(tenantA.id);
+    await createApp(tenantA.id);
 
     // Tenant B data
     const customerB = await createCustomer(tenantB.id, { email: 'b@b.com' });
@@ -47,7 +47,7 @@ describe('Feature: Tenant Isolation', () => {
     await createMessage(ticketB.id, tenantB.id, { body: 'B message' });
     await createKnowledgeArticle(tenantB.id, { title: 'B article' });
     await createDraft(ticketB.id, tenantB.id, { draft_response: 'B draft' });
-    await createTenantProvider(tenantB.id);
+    await createApp(tenantB.id);
   });
 
   it('tenant A cannot access tenant B tickets endpoint', async () => {
@@ -74,9 +74,9 @@ describe('Feature: Tenant Isolation', () => {
     expect(res.status).toBe(403);
   });
 
-  it('tenant A cannot access tenant B providers endpoint', async () => {
+  it('tenant A cannot access tenant B apps endpoint', async () => {
     const res = await request
-      .get(`/api/v1/tenants/${tenantB.id}/providers`)
+      .get(`/api/v1/tenants/${tenantB.id}/apps`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(res.status).toBe(403);

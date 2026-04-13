@@ -1,67 +1,73 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+import { createApp as createExpressApp } from '../../src/index';
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
-import { createTenant, createTenantProvider } from '../helpers/fixtures';
+import { createTenant, createApp } from '../helpers/fixtures';
 
-const app = createApp();
+const app = createExpressApp();
 const request = supertest(app);
 
-describe('Feature: Tenant Providers', () => {
+describe('Feature: Apps', () => {
   beforeAll(async () => { await setupTestDb(); });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('GET /api/v1/tenants/:tenantId/providers', () => {
+  describe('GET /api/v1/tenants/:tenantId/apps', () => {
     it('should return empty list initially', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/providers`)
+        .get(`/api/v1/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
     });
 
-    it('should return providers after creation', async () => {
+    it('should return apps after creation', async () => {
       const tenant = await createTenant();
-      await createTenantProvider(tenant.id);
+      await createApp(tenant.id);
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/providers`)
+        .get(`/api/v1/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
-      expect(res.body[0].provider).toBe('intercom');
+      expect(res.body[0].code).toBe('intercom');
+      expect(res.body[0].type).toBe('ticket');
+      expect(res.body[0].role).toBe('both');
     });
   });
 
-  describe('POST /api/v1/tenants/:tenantId/providers', () => {
-    it('should add intercom config and return 201', async () => {
+  describe('POST /api/v1/tenants/:tenantId/apps', () => {
+    it('should add an app and return 201', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/providers`)
+        .post(`/api/v1/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key)
         .send({
-          provider: 'intercom',
+          code: 'intercom',
+          type: 'ticket',
+          role: 'both',
           credentials: { accessToken: 'tok-123', clientSecret: 'sec-456' },
           webhook_secret: 'wh-secret',
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.provider).toBe('intercom');
+      expect(res.body.code).toBe('intercom');
+      expect(res.body.type).toBe('ticket');
+      expect(res.body.role).toBe('both');
       expect(res.body.tenant_id).toBe(tenant.id);
       expect(res.body.is_active).toBe(true);
     });
 
-    it('should return 400 without provider field', async () => {
+    it('should return 400 without required fields', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/providers`)
+        .post(`/api/v1/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key)
         .send({ credentials: { accessToken: 'tok' } });
 
@@ -69,13 +75,13 @@ describe('Feature: Tenant Providers', () => {
     });
   });
 
-  describe('PUT /api/v1/tenants/:tenantId/providers/:provider', () => {
+  describe('PUT /api/v1/tenants/:tenantId/apps/:appId', () => {
     it('should update credentials', async () => {
       const tenant = await createTenant();
-      await createTenantProvider(tenant.id);
+      const appRecord = await createApp(tenant.id);
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/providers/intercom`)
+        .put(`/api/v1/tenants/${tenant.id}/apps/${appRecord.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({
           credentials: { accessToken: 'new-token', clientSecret: 'new-secret' },
@@ -85,11 +91,11 @@ describe('Feature: Tenant Providers', () => {
       expect(res.body.credentials.accessToken).toBe('new-token');
     });
 
-    it('should return 404 for non-existent provider', async () => {
+    it('should return 404 for non-existent app', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/providers/zendesk`)
+        .put(`/api/v1/tenants/${tenant.id}/apps/99999`)
         .set('X-API-Key', tenant.api_key)
         .send({ credentials: { token: 'abc' } });
 
@@ -97,19 +103,19 @@ describe('Feature: Tenant Providers', () => {
     });
   });
 
-  describe('DELETE /api/v1/tenants/:tenantId/providers/:provider', () => {
-    it('should remove provider and return 204', async () => {
+  describe('DELETE /api/v1/tenants/:tenantId/apps/:appId', () => {
+    it('should remove app and return 204', async () => {
       const tenant = await createTenant();
-      await createTenantProvider(tenant.id);
+      const appRecord = await createApp(tenant.id);
 
       const res = await request
-        .delete(`/api/v1/tenants/${tenant.id}/providers/intercom`)
+        .delete(`/api/v1/tenants/${tenant.id}/apps/${appRecord.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(204);
 
       const listRes = await request
-        .get(`/api/v1/tenants/${tenant.id}/providers`)
+        .get(`/api/v1/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
       expect(listRes.body).toHaveLength(0);
@@ -117,13 +123,13 @@ describe('Feature: Tenant Providers', () => {
   });
 
   describe('Cross-tenant protection', () => {
-    it('should return 403 when tenant A tries to access tenant B providers', async () => {
+    it('should return 403 when tenant A tries to access tenant B apps', async () => {
       const tenantA = await createTenant({ name: 'Tenant A', slug: 'tenant-a' });
       const tenantB = await createTenant({ name: 'Tenant B', slug: 'tenant-b' });
-      await createTenantProvider(tenantB.id);
+      await createApp(tenantB.id);
 
       const res = await request
-        .get(`/api/v1/tenants/${tenantB.id}/providers`)
+        .get(`/api/v1/tenants/${tenantB.id}/apps`)
         .set('X-API-Key', tenantA.api_key);
 
       expect(res.status).toBe(403);
