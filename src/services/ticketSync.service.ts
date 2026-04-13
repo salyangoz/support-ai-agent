@@ -1,10 +1,10 @@
-import { createProvider } from '../providers/provider.factory';
+import { createInputApp } from '../apps/app.factory';
 import { embed } from './embedding.service';
 import * as customerRepo from '../repositories/customer.repository';
 import * as ticketRepo from '../repositories/ticket.repository';
 import * as messageRepo from '../repositories/message.repository';
 import * as tenantRepo from '../repositories/tenant.repository';
-import { Tenant, TenantProvider, TenantSettings } from '../models/types';
+import { Tenant, App, TenantSettings } from '../models/types';
 import { defaults } from '../config';
 import { logger } from '../utils/logger';
 
@@ -16,12 +16,11 @@ function getSetting<K extends keyof TenantSettings>(
   return tenant.settings[key] ?? fallback;
 }
 
-export async function syncTenantProvider(
+export async function syncInputApp(
   tenant: Tenant,
-  providerConfig: TenantProvider,
+  app: App,
 ) {
-  const credentials = providerConfig.credentials as Record<string, any>;
-  const adapter = createProvider({ ...credentials, provider: providerConfig.provider });
+  const adapter = createInputApp(app);
   const lookbackMinutes = getSetting(
     tenant,
     'sync_lookback_minutes',
@@ -32,7 +31,7 @@ export async function syncTenantProvider(
 
   for (const ticket of tickets) {
     const customer = await findOrCreateCustomer(tenant.id, ticket);
-    const upsertedTicket = await upsertTicketFromSync(tenant.id, providerConfig.provider, ticket, customer?.id);
+    const upsertedTicket = await upsertTicketFromSync(tenant.id, app.id, ticket, customer?.id);
     await syncTicketMessages(adapter, tenant.id, upsertedTicket.id, ticket.externalId);
   }
 }
@@ -51,13 +50,13 @@ async function findOrCreateCustomer(tenantId: number, ticket: any) {
 
 async function upsertTicketFromSync(
   tenantId: number,
-  provider: string,
+  inputAppId: number,
   ticket: any,
   customerId?: number,
 ) {
   return ticketRepo.upsertTicket({
     tenantId,
-    provider,
+    inputAppId,
     externalId: ticket.externalId,
     state: ticket.state,
     subject: ticket.subject,

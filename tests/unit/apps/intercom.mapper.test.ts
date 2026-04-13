@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mapConversationToTicket,
   mapConversationPartsToMessages,
-} from '../../../src/providers/intercom/intercom.mapper';
+} from '../../../src/apps/intercom/intercom.mapper';
 
 describe('Intercom Mapper', () => {
   describe('mapConversationToTicket', () => {

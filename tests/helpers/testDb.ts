@@ -17,7 +17,7 @@ export async function truncateAll(): Promise<void> {
   const prisma = getTestPrisma();
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE drafts, messages, tickets, knowledge_articles,
-    customers, tenant_providers, tenants CASCADE
+    customers, apps, tenants CASCADE
   `);
 }
 

@@ -1,5 +1,5 @@
-import { Tenant, TenantProvider, TenantSettings } from '../models/types';
-import { WebhookEvent } from '../providers/provider.interface';
+import { Tenant, App, TenantSettings } from '../models/types';
+import { WebhookEvent } from '../apps/app.interface';
 import { embed } from './embedding.service';
 import { generateDraft, sendDraft } from './aiDraft.service';
 import * as customerRepo from '../repositories/customer.repository';
@@ -18,27 +18,28 @@ function getSetting<K extends keyof TenantSettings>(
 
 export async function handleEvent(
   tenant: Tenant,
-  providerConfig: TenantProvider,
+  app: App,
   event: WebhookEvent,
 ) {
   logger.info('Webhook event received', {
     tenantId: tenant.id,
-    provider: providerConfig.provider,
+    appId: app.id,
+    appCode: app.code,
     eventType: event.type,
   });
 
   switch (event.type) {
     case 'new_ticket':
-      await handleNewTicket(tenant, providerConfig, event);
+      await handleNewTicket(tenant, app, event);
       break;
     case 'new_customer_reply':
-      await handleNewCustomerReply(tenant, providerConfig, event);
+      await handleNewCustomerReply(tenant, app, event);
       break;
     case 'ticket_closed':
-      await handleTicketClosed(tenant, providerConfig, event);
+      await handleTicketClosed(tenant, app, event);
       break;
     case 'ticket_assigned':
-      await handleTicketAssigned(tenant, providerConfig, event);
+      await handleTicketAssigned(tenant, app, event);
       break;
     default:
       logger.warn('Unknown webhook event type', { eventType: event.type });
@@ -47,14 +48,14 @@ export async function handleEvent(
 
 async function handleNewTicket(
   tenant: Tenant,
-  providerConfig: TenantProvider,
+  app: App,
   event: WebhookEvent,
 ) {
   const customer = await findOrCreateCustomerFromEvent(tenant.id, event);
 
   await ticketRepo.upsertTicket({
     tenantId: tenant.id,
-    provider: providerConfig.provider,
+    inputAppId: app.id,
     externalId: event.ticketExternalId,
     state: event.data.state || 'open',
     subject: event.data.subject,
@@ -67,14 +68,14 @@ async function handleNewTicket(
 
 async function handleNewCustomerReply(
   tenant: Tenant,
-  providerConfig: TenantProvider,
+  app: App,
   event: WebhookEvent,
 ) {
   const customer = await findOrCreateCustomerFromEvent(tenant.id, event);
 
   const ticket = await ticketRepo.upsertTicket({
     tenantId: tenant.id,
-    provider: providerConfig.provider,
+    inputAppId: app.id,
     externalId: event.ticketExternalId,
     customerId: customer?.id,
   });
@@ -99,12 +100,12 @@ async function handleNewCustomerReply(
 
 async function handleTicketClosed(
   tenant: Tenant,
-  providerConfig: TenantProvider,
+  app: App,
   event: WebhookEvent,
 ) {
   const ticket = await ticketRepo.upsertTicket({
     tenantId: tenant.id,
-    provider: providerConfig.provider,
+    inputAppId: app.id,
     externalId: event.ticketExternalId,
   });
 
@@ -132,12 +133,12 @@ async function embedClosedTicketMessages(tenantId: number, ticketId: number) {
 
 async function handleTicketAssigned(
   tenant: Tenant,
-  providerConfig: TenantProvider,
+  app: App,
   event: WebhookEvent,
 ) {
   const ticket = await ticketRepo.upsertTicket({
     tenantId: tenant.id,
-    provider: providerConfig.provider,
+    inputAppId: app.id,
     externalId: event.ticketExternalId,
   });
 

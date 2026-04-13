@@ -4,7 +4,7 @@ import * as messageRepo from '../repositories/message.repository';
 export async function getTickets(
   tenantId: number,
   opts?: {
-    provider?: string;
+    inputAppId?: number;
     state?: string;
     customerId?: number;
     page?: number;

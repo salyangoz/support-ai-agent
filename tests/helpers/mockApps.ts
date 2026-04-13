@@ -1,12 +1,13 @@
 import {
-  TicketProvider,
+  InputApp,
+  OutputApp,
   NormalizedTicket,
   NormalizedMessage,
   WebhookEvent,
-} from '../../src/providers/provider.interface';
+  SendReplyOptions,
+} from '../../src/apps/app.interface';
 
-export class MockIntercomAdapter implements TicketProvider {
-  public sentReplies: Array<{ externalTicketId: string; body: string; adminId?: string }> = [];
+export class MockIntercomInputApp implements InputApp {
   public ticketsToReturn: NormalizedTicket[] = [];
   public messagesToReturn: NormalizedMessage[] = [];
   public webhookEventToReturn: WebhookEvent | null = null;
@@ -20,16 +21,20 @@ export class MockIntercomAdapter implements TicketProvider {
     return this.messagesToReturn;
   }
 
-  async sendReply(externalTicketId: string, body: string, adminId?: string): Promise<void> {
-    this.sentReplies.push({ externalTicketId, body, adminId });
-  }
-
   verifyWebhook(): boolean {
     return this.webhookVerifyResult;
   }
 
   parseWebhook(): WebhookEvent | null {
     return this.webhookEventToReturn;
+  }
+}
+
+export class MockIntercomOutputApp implements OutputApp {
+  public sentReplies: Array<{ externalTicketId: string; body: string; options?: SendReplyOptions }> = [];
+
+  async sendReply(externalTicketId: string, body: string, options?: SendReplyOptions): Promise<void> {
+    this.sentReplies.push({ externalTicketId, body, options });
   }
 }
 

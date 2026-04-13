@@ -4,7 +4,7 @@ import { getPrisma } from '../database/prisma';
 export async function findTicketsByTenantId(
   tenantId: number,
   opts?: {
-    provider?: string;
+    inputAppId?: number;
     state?: string;
     customerId?: number;
     page?: number;
@@ -13,8 +13,8 @@ export async function findTicketsByTenantId(
 ) {
   const where: Prisma.TicketWhereInput = { tenantId };
 
-  if (opts?.provider) {
-    where.provider = opts.provider;
+  if (opts?.inputAppId) {
+    where.inputAppId = opts.inputAppId;
   }
   if (opts?.state) {
     where.state = opts.state;
@@ -57,7 +57,7 @@ export async function findTicketById(tenantId: number, id: number) {
 
 export async function upsertTicket(data: {
   tenantId: number;
-  provider: string;
+  inputAppId: number;
   externalId: string;
   state?: string;
   subject?: string;
@@ -65,20 +65,21 @@ export async function upsertTicket(data: {
   language?: string;
   assigneeId?: string;
   customerId?: number;
-  externalCreatedAt?: string;
-  externalUpdatedAt?: string;
+  outputAppId?: number;
+  externalCreatedAt?: string | Date;
+  externalUpdatedAt?: string | Date;
 }) {
   return getPrisma().ticket.upsert({
     where: {
-      tenantId_provider_externalId: {
+      tenantId_inputAppId_externalId: {
         tenantId: data.tenantId,
-        provider: data.provider,
+        inputAppId: data.inputAppId,
         externalId: data.externalId,
       },
     },
     create: {
       tenantId: data.tenantId,
-      provider: data.provider,
+      inputAppId: data.inputAppId,
       externalId: data.externalId,
       state: data.state ?? 'open',
       subject: data.subject ?? null,
@@ -86,10 +87,11 @@ export async function upsertTicket(data: {
       language: data.language ?? null,
       assigneeId: data.assigneeId ?? null,
       customerId: data.customerId ?? null,
+      outputAppId: data.outputAppId ?? null,
       externalCreatedAt: data.externalCreatedAt
-        ? new Date(data.externalCreatedAt) : null,
+        ? new Date(data.externalCreatedAt as string) : null,
       externalUpdatedAt: data.externalUpdatedAt
-        ? new Date(data.externalUpdatedAt) : null,
+        ? new Date(data.externalUpdatedAt as string) : null,
     },
     update: {
       state: data.state ?? undefined,
@@ -98,8 +100,9 @@ export async function upsertTicket(data: {
       language: data.language ?? undefined,
       assigneeId: data.assigneeId ?? undefined,
       customerId: data.customerId ?? undefined,
+      outputAppId: data.outputAppId ?? undefined,
       externalUpdatedAt: data.externalUpdatedAt
-        ? new Date(data.externalUpdatedAt) : undefined,
+        ? new Date(data.externalUpdatedAt as string) : undefined,
     },
   });
 }
@@ -128,6 +131,22 @@ export async function updateTicketAssignee(
   return getPrisma().ticket.updateMany({
     where: { tenantId, id },
     data: { assigneeId },
+  }).then(async (result) => {
+    if (result.count === 0) {
+      return null;
+    }
+    return getPrisma().ticket.findUnique({ where: { id } });
+  });
+}
+
+export async function updateTicketOutputApp(
+  tenantId: number,
+  id: number,
+  outputAppId: number,
+) {
+  return getPrisma().ticket.updateMany({
+    where: { tenantId, id },
+    data: { outputAppId },
   }).then(async (result) => {
     if (result.count === 0) {
       return null;

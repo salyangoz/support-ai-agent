@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import crypto from 'crypto';
-import { verifyIntercomWebhook, parseIntercomWebhook } from '../../../src/providers/intercom/intercom.webhook';
+import { verifyIntercomWebhook, parseIntercomWebhook } from '../../../src/apps/intercom/intercom.webhook';
 
 function createSignature(body: string, secret: string): string {
   const hmac = crypto.createHmac('sha1', secret);

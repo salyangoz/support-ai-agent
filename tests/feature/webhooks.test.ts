@@ -1,11 +1,11 @@
 import crypto from 'crypto';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+import { createApp as createExpressApp } from '../../src/index';
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
-import { createTenant, createTenantProvider } from '../helpers/fixtures';
+import { createTenant, createApp } from '../helpers/fixtures';
 
-const app = createApp();
+const app = createExpressApp();
 const request = supertest(app);
 
 function buildIntercomPayload(): Record<string, any> {
@@ -47,13 +47,15 @@ describe('Feature: Webhooks', () => {
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('POST /webhooks/:tenantSlug/:provider', () => {
+  describe('POST /webhooks/:tenantSlug/:appId', () => {
     it('should return 200 with valid HMAC signature', async () => {
       const clientSecret = 'my-intercom-client-secret';
       const tenant = await createTenant({ slug: 'wh-tenant' });
-      await createTenantProvider(tenant.id, {
-        provider: 'intercom',
-        credentials: JSON.stringify({ accessToken: 'tok', clientSecret }),
+      const appRecord = await createApp(tenant.id, {
+        code: 'intercom',
+        type: 'ticket',
+        role: 'both',
+        credentials: { accessToken: 'tok', clientSecret },
         webhook_secret: 'wh-secret',
       });
 
@@ -62,7 +64,7 @@ describe('Feature: Webhooks', () => {
       const signature = computeHmacSignature(clientSecret, body);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/intercom`)
+        .post(`/webhooks/${tenant.slug}/${appRecord.id}`)
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', signature)
         .send(Buffer.from(body));
@@ -73,9 +75,11 @@ describe('Feature: Webhooks', () => {
     it('should return 401 with invalid HMAC signature', async () => {
       const clientSecret = 'my-intercom-client-secret';
       const tenant = await createTenant({ slug: 'wh-invalid' });
-      await createTenantProvider(tenant.id, {
-        provider: 'intercom',
-        credentials: JSON.stringify({ accessToken: 'tok', clientSecret }),
+      const appRecord = await createApp(tenant.id, {
+        code: 'intercom',
+        type: 'ticket',
+        role: 'both',
+        credentials: { accessToken: 'tok', clientSecret },
         webhook_secret: 'wh-secret',
       });
 
@@ -83,7 +87,7 @@ describe('Feature: Webhooks', () => {
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/intercom`)
+        .post(`/webhooks/${tenant.slug}/${appRecord.id}`)
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=invalidsignature')
         .send(Buffer.from(body));
@@ -96,7 +100,7 @@ describe('Feature: Webhooks', () => {
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post('/webhooks/nonexistent-slug/intercom')
+        .post('/webhooks/nonexistent-slug/1')
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=anything')
         .send(Buffer.from(body));
@@ -104,14 +108,14 @@ describe('Feature: Webhooks', () => {
       expect(res.status).toBe(404);
     });
 
-    it('should return 400 when provider is not configured', async () => {
-      const tenant = await createTenant({ slug: 'wh-noprov' });
+    it('should return 400 when app is not configured', async () => {
+      const tenant = await createTenant({ slug: 'wh-noapp' });
 
       const payload = buildIntercomPayload();
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/intercom`)
+        .post(`/webhooks/${tenant.slug}/99999`)
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=anything')
         .send(Buffer.from(body));

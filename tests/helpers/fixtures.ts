@@ -42,32 +42,40 @@ export async function createTenant(
   };
 }
 
-export async function createTenantProvider(
+export async function createApp(
   tenantId: number,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const data = {
     tenantId,
-    provider: overrides.provider ?? 'intercom',
+    code: overrides.code ?? 'intercom',
+    type: overrides.type ?? 'ticket',
+    role: overrides.role ?? 'both',
+    name: overrides.name ?? null,
     credentials: overrides.credentials ?? {
       accessToken: 'test-token',
       clientSecret: 'test-secret',
     },
     webhookSecret: overrides.webhook_secret ?? 'test-webhook-secret',
+    config: overrides.config ?? {},
     isActive: overrides.is_active ?? true,
   };
 
-  const tp = await prisma.tenantProvider.create({ data });
+  const app = await prisma.app.create({ data });
   return {
-    id: tp.id,
-    tenant_id: tp.tenantId,
-    provider: tp.provider,
-    credentials: tp.credentials,
-    webhook_secret: tp.webhookSecret,
-    is_active: tp.isActive,
-    created_at: tp.createdAt,
-    updated_at: tp.updatedAt,
+    id: app.id,
+    tenant_id: app.tenantId,
+    code: app.code,
+    type: app.type,
+    role: app.role,
+    name: app.name,
+    credentials: app.credentials,
+    webhook_secret: app.webhookSecret,
+    config: app.config,
+    is_active: app.isActive,
+    created_at: app.createdAt,
+    updated_at: app.updatedAt,
   };
 }
 
@@ -108,7 +116,8 @@ export async function createTicket(
   const n = nextId();
   const data = {
     tenantId,
-    provider: overrides.provider ?? 'intercom',
+    inputAppId: overrides.input_app_id ?? null,
+    outputAppId: overrides.output_app_id ?? null,
     externalId: overrides.external_id ?? `ticket-ext-${n}`,
     state: overrides.state ?? 'open',
     subject: overrides.subject ?? `Test Ticket ${n}`,
@@ -122,7 +131,8 @@ export async function createTicket(
   return {
     id: t.id,
     tenant_id: t.tenantId,
-    provider: t.provider,
+    input_app_id: t.inputAppId,
+    output_app_id: t.outputAppId,
     external_id: t.externalId,
     state: t.state,
     subject: t.subject,

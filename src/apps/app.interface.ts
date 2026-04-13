@@ -1,3 +1,5 @@
+// --- Normalized data models (shared across all apps) ---
+
 export interface NormalizedTicket {
   externalId: string;
   subject?: string;
@@ -27,10 +29,37 @@ export interface WebhookEvent {
   data: Record<string, any>;
 }
 
-export interface TicketProvider {
+// --- Ticket App interfaces ---
+
+export interface InputApp {
   fetchRecentTickets(sinceMinutes: number): Promise<NormalizedTicket[]>;
   fetchTicketMessages(externalTicketId: string): Promise<NormalizedMessage[]>;
-  sendReply(externalTicketId: string, body: string, adminId?: string): Promise<void>;
   verifyWebhook(rawBody: Buffer, headers: Record<string, any>): boolean;
   parseWebhook(rawBody: Buffer, headers: Record<string, any>): WebhookEvent | null;
+}
+
+export interface OutputApp {
+  sendReply(externalTicketId: string, body: string, options?: SendReplyOptions): Promise<void>;
+}
+
+export interface DualApp extends InputApp, OutputApp {}
+
+export interface SendReplyOptions {
+  adminId?: string;
+  metadata?: Record<string, any>;
+}
+
+// --- Knowledge App interfaces ---
+
+export interface KnowledgeSourceApp {
+  fetchArticles(since?: Date): Promise<NormalizedArticle[]>;
+}
+
+export interface NormalizedArticle {
+  externalId: string;
+  title: string;
+  content: string;
+  category?: string;
+  language?: string;
+  metadata?: Record<string, any>;
 }
