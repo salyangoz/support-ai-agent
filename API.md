@@ -24,7 +24,7 @@ The middleware validates that the API key belongs to the tenant specified in the
 
 ### Webhook Endpoints
 
-No API key required. Authentication is done via provider-specific signature verification (e.g., HMAC-SHA1 for Intercom).
+No API key required. Authentication is done via app-specific signature verification (e.g., HMAC-SHA1 for Intercom).
 
 ---
 
@@ -62,7 +62,8 @@ Create a new tenant. Returns a generated API key.
   "settings": {
     "auto_send_drafts": false,
     "ai_model": "deepseek-chat",
-    "default_language": "en"
+    "default_language": "en",
+    "output_app_ids": [1, 3]
   }
 }
 ```
@@ -117,7 +118,8 @@ Update tenant name or settings.
   "name": "New Name",
   "settings": {
     "auto_send_drafts": true,
-    "ai_model": "gpt-4"
+    "ai_model": "gpt-4",
+    "output_app_ids": [2, 5]
   }
 }
 ```
@@ -128,13 +130,24 @@ Update tenant name or settings.
 
 ---
 
-## Tenant Providers
+## Apps
 
-### `GET /api/v1/tenants/:tenantId/providers`
+Apps represent connected external services (Intercom, Zendesk, Slack, Notion, etc.). Each app has a **code** (which service), **type** (what purpose), and **role** (data direction).
 
-List configured providers for a tenant.
+### `GET /api/v1/tenants/:tenantId/apps`
+
+List configured apps for a tenant.
 
 **Auth**: Tenant API key
+
+**Query Parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `type` | string | Filter by type (`ticket`, `knowledge`, `notification`) |
+| `role` | string | Filter by role (`source`, `destination`, `both`) |
+| `code` | string | Filter by service code (`intercom`, `zendesk`) |
+| `is_active` | string | Filter by active status (`true`/`false`) |
 
 **Response** `200`
 
@@ -143,9 +156,13 @@ List configured providers for a tenant.
   {
     "id": 1,
     "tenant_id": 1,
-    "provider": "intercom",
+    "code": "intercom",
+    "type": "ticket",
+    "role": "both",
+    "name": "Main Intercom",
     "credentials": { "accessToken": "tok-123", "clientSecret": "sec-456" },
     "webhook_secret": "wh-secret",
+    "config": {},
     "is_active": true,
     "created_at": "2026-03-30T12:00:00.000Z",
     "updated_at": "2026-03-30T12:00:00.000Z"
@@ -155,9 +172,21 @@ List configured providers for a tenant.
 
 ---
 
-### `POST /api/v1/tenants/:tenantId/providers`
+### `GET /api/v1/tenants/:tenantId/apps/:appId`
 
-Add a provider configuration.
+Get a single app.
+
+**Auth**: Tenant API key
+
+**Response** `200`: App object
+
+**Errors**: `404` app not found
+
+---
+
+### `POST /api/v1/tenants/:tenantId/apps`
+
+Add an app configuration.
 
 **Auth**: Tenant API key
 
@@ -165,34 +194,42 @@ Add a provider configuration.
 
 ```json
 {
-  "provider": "intercom",
+  "code": "intercom",
+  "type": "ticket",
+  "role": "both",
+  "name": "Main Intercom Account",
   "credentials": {
     "accessToken": "your-intercom-token",
     "clientSecret": "your-client-secret"
   },
-  "webhook_secret": "optional-webhook-secret"
+  "webhook_secret": "optional-webhook-secret",
+  "config": {}
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `provider` | string | yes | Provider name (`intercom`, `zendesk`) |
-| `credentials` | object | yes | Provider-specific credentials |
+| `code` | string | yes | Service code (`intercom`, `zendesk`, `slack`, `notion`) |
+| `type` | string | yes | App type: `ticket`, `knowledge`, or `notification` |
+| `role` | string | yes | Data direction: `source`, `destination`, or `both` |
+| `name` | string | no | Human-readable label |
+| `credentials` | object | yes | Service-specific credentials |
 | `webhook_secret` | string | no | Webhook verification secret |
+| `config` | object | no | Extra configuration (e.g., `{ "feed_kb": true }`) |
 
-**Intercom credentials**:
+**Intercom credentials** (type: `ticket`):
 - `accessToken` -- Bearer token for API calls
 - `clientSecret` -- OAuth client secret for webhook HMAC-SHA1 verification
 
-**Response** `201`: Provider object
+**Response** `201`: App object
 
-**Errors**: `400` provider or credentials missing
+**Errors**: `400` required fields missing or invalid type/role
 
 ---
 
-### `PUT /api/v1/tenants/:tenantId/providers/:provider`
+### `PUT /api/v1/tenants/:tenantId/apps/:appId`
 
-Update provider credentials.
+Update an app configuration.
 
 **Auth**: Tenant API key
 
@@ -200,21 +237,24 @@ Update provider credentials.
 
 ```json
 {
+  "name": "Updated Name",
   "credentials": { "accessToken": "new-token" },
   "webhook_secret": "new-secret",
-  "is_active": false
+  "config": { "feed_kb": true },
+  "is_active": false,
+  "role": "destination"
 }
 ```
 
-**Response** `200`: Updated provider object
+**Response** `200`: Updated app object
 
-**Errors**: `404` provider not found
+**Errors**: `400` invalid role, `404` app not found
 
 ---
 
-### `DELETE /api/v1/tenants/:tenantId/providers/:provider`
+### `DELETE /api/v1/tenants/:tenantId/apps/:appId`
 
-Remove a provider configuration.
+Remove an app configuration.
 
 **Auth**: Tenant API key
 
@@ -234,7 +274,7 @@ List synced tickets for the tenant.
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `provider` | string | Filter by provider name |
+| `input_app_id` | number | Filter by input app ID |
 | `state` | string | Filter by state (`open`, `pending`, `resolved`, `closed`) |
 | `customer_id` | number | Filter by customer ID |
 | `page` | number | Page number (default: 1) |
@@ -249,7 +289,8 @@ List synced tickets for the tenant.
       "id": 1,
       "tenant_id": 1,
       "customer_id": 5,
-      "provider": "intercom",
+      "input_app_id": 1,
+      "output_app_id": 1,
       "external_id": "conv_456",
       "state": "open",
       "subject": "Cannot login",
@@ -281,6 +322,8 @@ Get a single ticket with its messages and customer info.
   "ticket": {
     "id": 1,
     "tenant_id": 1,
+    "input_app_id": 1,
+    "output_app_id": 1,
     "subject": "Cannot login",
     "state": "open",
     "customer_email": "jane@example.com",
@@ -297,17 +340,6 @@ Get a single ticket with its messages and customer info.
       "body": "I'm having trouble logging in...",
       "external_created_at": "2026-03-29T10:00:00.000Z",
       "created_at": "2026-03-30T12:00:00.000Z"
-    },
-    {
-      "id": 2,
-      "ticket_id": 1,
-      "tenant_id": 1,
-      "external_id": "msg_002",
-      "author_role": "agent",
-      "author_name": "Support Agent",
-      "body": "Let me help you with that...",
-      "external_created_at": "2026-03-29T10:05:00.000Z",
-      "created_at": "2026-03-30T12:00:00.000Z"
     }
   ]
 }
@@ -319,7 +351,7 @@ Get a single ticket with its messages and customer info.
 
 ### `POST /api/v1/tenants/:tenantId/tickets/sync`
 
-Trigger a manual sync from a provider. Responds immediately and runs the sync in the background.
+Trigger a manual sync from an app. Responds immediately and runs the sync in the background.
 
 **Auth**: Tenant API key
 
@@ -327,7 +359,7 @@ Trigger a manual sync from a provider. Responds immediately and runs the sync in
 
 ```json
 {
-  "provider": "intercom"
+  "app_id": 1
 }
 ```
 
@@ -339,7 +371,27 @@ Trigger a manual sync from a provider. Responds immediately and runs the sync in
 }
 ```
 
-**Errors**: `400` provider missing, `404` provider not configured
+**Errors**: `400` app_id missing, `404` app not configured
+
+---
+
+### `PATCH /api/v1/tenants/:tenantId/tickets/:id/output-app`
+
+Override the output app for a specific ticket. This determines where the AI draft reply will be sent.
+
+**Auth**: Tenant API key
+
+**Request Body**
+
+```json
+{
+  "output_app_id": 5
+}
+```
+
+**Response** `200`: Updated ticket object
+
+**Errors**: `400` output_app_id missing or app is source-only, `404` ticket or app not found
 
 ---
 
@@ -424,7 +476,7 @@ Create or update a customer (upserts by email within the tenant).
 | `email` | string | yes | Customer email (unique per tenant) |
 | `name` | string | no | Display name |
 | `phone` | string | no | Phone number |
-| `external_id` | string | no | Provider's customer ID |
+| `external_id` | string | no | External system's customer ID |
 | `metadata` | object | no | Arbitrary metadata (orders, plan, etc.) |
 
 **Response** `201`: Customer object (created or updated)
@@ -661,7 +713,12 @@ Approve or reject a draft.
 
 ### `POST /api/v1/tenants/:tenantId/drafts/:id/send`
 
-Send an approved draft via the ticket provider. Calls `provider.sendReply()` to push the response back to the ticket system.
+Send an approved draft to the resolved output app(s). Uses the output routing logic:
+1. Ticket-level `output_app_id` override
+2. Tenant-level `output_app_ids` fan-out pipeline
+3. Fallback to input app (if role is `both`)
+
+Supports **fan-out**: if multiple output apps are configured, the draft is sent to all of them in parallel via `Promise.allSettled()`.
 
 **Auth**: Tenant API key
 
@@ -673,27 +730,29 @@ Send an approved draft via the ticket provider. Calls `provider.sendReply()` to 
 }
 ```
 
-**Errors**: `400` draft not approved, `404` draft not found
+**Errors**: `400` draft not approved, `404` draft not found, `500` no output app configured
 
 ---
 
 ## Webhooks
 
-### `POST /webhooks/:tenantSlug/:provider`
+### `POST /webhooks/:tenantSlug/:appId`
 
-Receive webhook events from ticket providers. No API key required -- authentication is done via provider-specific signature verification.
+Receive webhook events from ticket apps. No API key required -- authentication is done via app-specific signature verification.
 
 **URL Examples**:
-- `/webhooks/acme/intercom`
-- `/webhooks/bigcorp/zendesk`
+- `/webhooks/acme/1` (app ID 1)
+- `/webhooks/bigcorp/5` (app ID 5)
+
+The `:appId` parameter is the numeric ID of the app (returned when creating an app). Only apps with `type: 'ticket'` and `role: 'source'` or `'both'` can receive webhooks.
 
 **Intercom Headers**:
-- `X-Hub-Signature`: `sha1=<hmac-hex-digest>` (HMAC-SHA1 using the Intercom app's `clientSecret`)
+- `X-Hub-Signature`: `sha1=<hmac-hex-digest>` (HMAC-SHA1 using the app's `clientSecret`)
 
 **Processing**:
 1. Resolves tenant from `:tenantSlug`
-2. Loads provider config from `tenant_providers`
-3. Verifies signature using provider adapter
+2. Loads app from `:appId`
+3. Verifies signature using app adapter
 4. Responds `200` immediately
 5. Processes event asynchronously:
    - `new_ticket` -- Upserts ticket + links/creates customer
@@ -709,7 +768,7 @@ Receive webhook events from ticket providers. No API key required -- authenticat
 }
 ```
 
-**Errors**: `401` invalid signature, `404` unknown tenant slug, `400` provider not configured
+**Errors**: `400` invalid app ID or app not configured as input, `401` invalid signature, `403` tenant inactive, `404` tenant not found
 
 ---
 
@@ -727,6 +786,6 @@ All errors follow a consistent format:
 |--------|---------|
 | `400` | Bad request (missing required fields, invalid values) |
 | `401` | Unauthorized (missing or invalid API key / webhook signature) |
-| `403` | Forbidden (API key doesn't match the tenant in the URL) |
+| `403` | Forbidden (API key doesn't match the tenant, or tenant inactive) |
 | `404` | Resource not found |
 | `500` | Internal server error |
