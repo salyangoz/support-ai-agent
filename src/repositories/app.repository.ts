@@ -1,7 +1,8 @@
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
 
 export async function findAppsByTenantId(
-  tenantId: number,
+  tenantId: string,
   filters?: { type?: string; role?: string; code?: string; isActive?: boolean },
 ) {
   const where: Record<string, unknown> = { tenantId };
@@ -13,13 +14,13 @@ export async function findAppsByTenantId(
   return getPrisma().app.findMany({ where });
 }
 
-export async function findAppById(tenantId: number, appId: number) {
+export async function findAppById(tenantId: string, appId: string) {
   return getPrisma().app.findFirst({
     where: { id: appId, tenantId },
   });
 }
 
-export async function findActiveInputApps(tenantId: number) {
+export async function findActiveInputApps(tenantId: string) {
   return getPrisma().app.findMany({
     where: {
       tenantId,
@@ -30,7 +31,7 @@ export async function findActiveInputApps(tenantId: number) {
   });
 }
 
-export async function findActiveOutputApps(tenantId: number) {
+export async function findActiveOutputApps(tenantId: string) {
   return getPrisma().app.findMany({
     where: {
       tenantId,
@@ -42,7 +43,7 @@ export async function findActiveOutputApps(tenantId: number) {
 }
 
 export async function createApp(data: {
-  tenantId: number;
+  tenantId: string;
   code: string;
   type: string;
   role: string;
@@ -53,6 +54,7 @@ export async function createApp(data: {
 }) {
   return getPrisma().app.create({
     data: {
+      id: generateId(),
       tenantId: data.tenantId,
       code: data.code,
       type: data.type,
@@ -66,8 +68,8 @@ export async function createApp(data: {
 }
 
 export async function updateApp(
-  tenantId: number,
-  appId: number,
+  tenantId: string,
+  appId: string,
   data: {
     name?: string;
     credentials?: Record<string, unknown>;
@@ -96,7 +98,28 @@ export async function updateApp(
   }).catch(() => null);
 }
 
-export async function deleteApp(tenantId: number, appId: number) {
+export async function markAppSynced(appId: string) {
+  return getPrisma().app.update({
+    where: { id: appId },
+    data: { lastSyncedAt: new Date(), lastError: null },
+  }).catch(() => null);
+}
+
+export async function markAppError(appId: string, error: string) {
+  return getPrisma().app.update({
+    where: { id: appId },
+    data: { lastSyncedAt: new Date(), lastError: error },
+  }).catch(() => null);
+}
+
+export async function markAppAuthFailed(appId: string, error: string) {
+  return getPrisma().app.update({
+    where: { id: appId },
+    data: { isActive: false, lastSyncedAt: new Date(), lastError: error },
+  }).catch(() => null);
+}
+
+export async function deleteApp(tenantId: string, appId: string) {
   await getPrisma().app.delete({
     where: { id: appId },
   }).catch(() => null);

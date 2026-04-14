@@ -1,15 +1,17 @@
+# ─── API HPA ───
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: support-ai-agent
+  name: support-ai-api
   namespace: support-ai
   labels:
     app: support-ai-agent
+    component: api
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: support-ai-agent
+    name: support-ai-api
   minReplicas: 2
   maxReplicas: 10
   metrics:
@@ -19,3 +21,27 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
+---
+# ─── Worker HPA ───
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: support-ai-worker
+  namespace: support-ai
+  labels:
+    app: support-ai-agent
+    component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: support-ai-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

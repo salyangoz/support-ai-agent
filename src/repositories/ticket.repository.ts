@@ -1,12 +1,13 @@
 import { Prisma } from '../generated/prisma/client';
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
 
 export async function findTicketsByTenantId(
-  tenantId: number,
+  tenantId: string,
   opts?: {
-    inputAppId?: number;
+    inputAppId?: string;
     state?: string;
-    customerId?: number;
+    customerId?: string;
     page?: number;
     limit?: number;
   },
@@ -34,7 +35,7 @@ export async function findTicketsByTenantId(
   });
 }
 
-export async function findTicketById(tenantId: number, id: number) {
+export async function findTicketById(tenantId: string, id: string) {
   return getPrisma().ticket.findFirst({
     where: { tenantId, id },
     include: {
@@ -56,16 +57,16 @@ export async function findTicketById(tenantId: number, id: number) {
 }
 
 export async function upsertTicket(data: {
-  tenantId: number;
-  inputAppId: number;
+  tenantId: string;
+  inputAppId: string;
   externalId: string;
   state?: string;
   subject?: string;
   initialBody?: string;
   language?: string;
   assigneeId?: string;
-  customerId?: number;
-  outputAppId?: number;
+  customerId?: string;
+  outputAppId?: string;
   externalCreatedAt?: string | Date;
   externalUpdatedAt?: string | Date;
 }) {
@@ -78,6 +79,7 @@ export async function upsertTicket(data: {
       },
     },
     create: {
+      id: generateId(),
       tenantId: data.tenantId,
       inputAppId: data.inputAppId,
       externalId: data.externalId,
@@ -108,8 +110,8 @@ export async function upsertTicket(data: {
 }
 
 export async function updateTicketState(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   state: string,
 ) {
   return getPrisma().ticket.updateMany({
@@ -124,8 +126,8 @@ export async function updateTicketState(
 }
 
 export async function updateTicketAssignee(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   assigneeId: string,
 ) {
   return getPrisma().ticket.updateMany({
@@ -140,9 +142,9 @@ export async function updateTicketAssignee(
 }
 
 export async function updateTicketOutputApp(
-  tenantId: number,
-  id: number,
-  outputAppId: number,
+  tenantId: string,
+  id: string,
+  outputAppId: string,
 ) {
   return getPrisma().ticket.updateMany({
     where: { tenantId, id },

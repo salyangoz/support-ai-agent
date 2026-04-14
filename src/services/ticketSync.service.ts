@@ -32,11 +32,11 @@ export async function syncInputApp(
   for (const ticket of tickets) {
     const customer = await findOrCreateCustomer(tenant.id, ticket);
     const upsertedTicket = await upsertTicketFromSync(tenant.id, app.id, ticket, customer?.id);
-    await syncTicketMessages(adapter, tenant.id, upsertedTicket.id, ticket.externalId);
+    await syncTicketMessages(adapter, tenant.id, upsertedTicket.id, ticket.externalId, tenant.settings.ai_credentials);
   }
 }
 
-async function findOrCreateCustomer(tenantId: number, ticket: any) {
+async function findOrCreateCustomer(tenantId: string, ticket: any) {
   if (!ticket.customerEmail) {
     return null;
   }
@@ -49,10 +49,10 @@ async function findOrCreateCustomer(tenantId: number, ticket: any) {
 }
 
 async function upsertTicketFromSync(
-  tenantId: number,
-  inputAppId: number,
+  tenantId: string,
+  inputAppId: string,
   ticket: any,
-  customerId?: number,
+  customerId?: string,
 ) {
   return ticketRepo.upsertTicket({
     tenantId,
@@ -71,9 +71,10 @@ async function upsertTicketFromSync(
 
 async function syncTicketMessages(
   adapter: any,
-  tenantId: number,
-  ticketId: number,
+  tenantId: string,
+  ticketId: string,
   externalTicketId: string,
+  credentials?: { api_key?: string },
 ) {
   const messages = await adapter.fetchTicketMessages(externalTicketId);
 
@@ -90,7 +91,7 @@ async function syncTicketMessages(
     });
 
     if (msg.authorRole === 'agent' && msg.body) {
-      const embedding = await embed(msg.body);
+      const embedding = await embed(msg.body, credentials);
       if (embedding) {
         await messageRepo.updateMessageEmbedding(upserted.id, embedding);
       }
@@ -103,13 +104,14 @@ export async function backfillMissingEmbeddings() {
 
   for (const tenant of tenants) {
     const messages = await messageRepo.findMessagesWithoutEmbedding(tenant.id);
+    const creds = (tenant.settings as any)?.ai_credentials;
 
     for (const msg of messages) {
       if (!msg.body) {
         continue;
       }
 
-      const embedding = await embed(msg.body);
+      const embedding = await embed(msg.body, creds);
       if (embedding) {
         await messageRepo.updateMessageEmbedding(msg.id, embedding);
         logger.info('Backfilled embedding', { tenantId: tenant.id, messageId: msg.id });

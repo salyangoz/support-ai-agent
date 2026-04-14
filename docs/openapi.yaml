@@ -1,0 +1,1437 @@
+openapi: 3.1.0
+info:
+  title: Yengec Support AI Agent
+  description: Multi-tenant, provider-agnostic AI draft response system for customer support tickets
+  version: 1.0.0
+
+servers:
+  - url: https://support-ai.yengec.co
+    description: Production
+  - url: http://localhost:3001
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Authentication & user session
+  - name: Tenants
+    description: Tenant management (admin only)
+  - name: Users
+    description: User & membership management
+  - name: Apps
+    description: Provider app integrations
+  - name: Tickets
+    description: Support tickets
+  - name: Customers
+    description: Customer profiles
+  - name: Knowledge Articles
+    description: Knowledge base for RAG
+  - name: Drafts
+    description: AI-generated draft responses
+  - name: Webhooks
+    description: Inbound webhooks from providers
+  - name: Health
+    description: System health
+
+components:
+  securitySchemes:
+    AdminApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: System admin API key
+    TenantApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Per-tenant API key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: User JWT access token
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    TenantSettings:
+      type: object
+      properties:
+        auto_send_drafts:
+          type: boolean
+        default_language:
+          type: string
+        rag_top_k:
+          type: integer
+        embedding_dimension:
+          type: integer
+        ai_service:
+          type: string
+          example: openai
+        ai_model:
+          type: string
+          example: gpt-4
+        ai_credentials:
+          type: object
+          properties:
+            api_key:
+              type: string
+        ai_instructions:
+          type: string
+        draft_tone:
+          type: string
+          example: professional
+        max_context_tokens:
+          type: integer
+        sync_lookback_minutes:
+          type: integer
+        output_app_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        api_key:
+          type: string
+        settings:
+          $ref: '#/components/schemas/TenantSettings'
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        is_active:
+          type: boolean
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TenantUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [owner, admin, member]
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    App:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          example: intercom
+        type:
+          type: string
+          enum: [ticket, knowledge, notification]
+        role:
+          type: string
+          enum: [source, destination, both]
+        name:
+          type: string
+          nullable: true
+        credentials:
+          type: object
+        webhook_secret:
+          type: string
+          nullable: true
+        config:
+          type: object
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+          nullable: true
+        input_app_id:
+          type: string
+          format: uuid
+          nullable: true
+        output_app_id:
+          type: string
+          format: uuid
+          nullable: true
+        external_id:
+          type: string
+        state:
+          type: string
+        subject:
+          type: string
+          nullable: true
+        initial_body:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        assignee_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        author_role:
+          type: string
+        author_id:
+          type: string
+          nullable: true
+        author_name:
+          type: string
+          nullable: true
+        body:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    KnowledgeArticle:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Draft:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        prompt_context:
+          type: string
+          nullable: true
+        draft_response:
+          type: string
+        ai_model:
+          type: string
+          nullable: true
+        ai_tokens_used:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [pending, approved, rejected, sent]
+        reviewed_by:
+          type: string
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+paths:
+  # ── Health ──
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ── Auth ──
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tenants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        role:
+                          type: string
+                          enum: [owner, admin, member]
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+        '401':
+          description: Invalid or expired token
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile with tenant memberships
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      tenants:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                            slug:
+                              type: string
+                            role:
+                              type: string
+
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed
+        '401':
+          description: Wrong current password
+
+  # ── Tenants ──
+  /tenants:
+    post:
+      tags: [Tenants]
+      summary: Create a tenant
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                settings:
+                  $ref: '#/components/schemas/TenantSettings'
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          description: Validation error
+
+  /tenants/{tenantId}:
+    get:
+      tags: [Tenants]
+      summary: Get tenant details
+      security:
+        - AdminApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          description: Not found
+    put:
+      tags: [Tenants]
+      summary: Update tenant
+      security:
+        - AdminApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                settings:
+                  $ref: '#/components/schemas/TenantSettings'
+      responses:
+        '200':
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+
+  # ── Users ──
+  /tenants/{tenantId}/users/owner:
+    post:
+      tags: [Users]
+      summary: Bootstrap initial owner user (admin only)
+      security:
+        - AdminApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Owner created
+        '400':
+          description: Tenant already has an owner
+
+  /tenants/{tenantId}/users:
+    get:
+      tags: [Users]
+      summary: List tenant members
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: List of members
+    post:
+      tags: [Users]
+      summary: Invite user to tenant
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                name:
+                  type: string
+                role:
+                  type: string
+                  enum: [owner, admin, member]
+                  default: member
+      responses:
+        '201':
+          description: User invited
+        '409':
+          description: User already a member
+
+  /tenants/{tenantId}/users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get tenant member
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Member details
+        '404':
+          description: Not found
+    put:
+      tags: [Users]
+      summary: Update membership (role, active status)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [owner, admin, member]
+                is_active:
+                  type: boolean
+      responses:
+        '200':
+          description: Membership updated
+    delete:
+      tags: [Users]
+      summary: Remove user from tenant (owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Removed
+
+  # ── Apps ──
+  /tenants/{tenantId}/apps:
+    get:
+      tags: [Apps]
+      summary: List apps
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ticket, knowledge, notification]
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [source, destination, both]
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of apps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/App'
+    post:
+      tags: [Apps]
+      summary: Create app
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, role, credentials]
+              properties:
+                code:
+                  type: string
+                  example: intercom
+                type:
+                  type: string
+                  enum: [ticket, knowledge, notification]
+                role:
+                  type: string
+                  enum: [source, destination, both]
+                name:
+                  type: string
+                credentials:
+                  type: object
+                webhook_secret:
+                  type: string
+                config:
+                  type: object
+      responses:
+        '201':
+          description: App created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/App'
+
+  /tenants/{tenantId}/apps/{appId}:
+    get:
+      tags: [Apps]
+      summary: Get app
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: App details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/App'
+    put:
+      tags: [Apps]
+      summary: Update app
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                credentials:
+                  type: object
+                webhook_secret:
+                  type: string
+                config:
+                  type: object
+                is_active:
+                  type: boolean
+                role:
+                  type: string
+                  enum: [source, destination, both]
+      responses:
+        '200':
+          description: App updated
+    delete:
+      tags: [Apps]
+      summary: Delete app
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+
+  # ── Tickets ──
+  /tenants/{tenantId}/tickets:
+    get:
+      tags: [Tickets]
+      summary: List tickets
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: input_app_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: customer_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated ticket list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+
+  /tenants/{tenantId}/tickets/{id}:
+    get:
+      tags: [Tickets]
+      summary: Get ticket with messages
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ticket with messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket:
+                    $ref: '#/components/schemas/Ticket'
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /tenants/{tenantId}/tickets/sync:
+    post:
+      tags: [Tickets]
+      summary: Trigger ticket sync from input app
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app_id]
+              properties:
+                app_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Sync started
+
+  /tenants/{tenantId}/tickets/{id}/output-app:
+    patch:
+      tags: [Tickets]
+      summary: Set ticket output app
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [output_app_id]
+              properties:
+                output_app_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Output app set
+
+  # ── Customers ──
+  /tenants/{tenantId}/customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: email
+          in: query
+          schema:
+            type: string
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated customer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Customer'
+    post:
+      tags: [Customers]
+      summary: Create or upsert customer
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                phone:
+                  type: string
+                external_id:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        '201':
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+  /tenants/{tenantId}/customers/{id}:
+    get:
+      tags: [Customers]
+      summary: Get customer
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+  /tenants/{tenantId}/customers/{id}/metadata:
+    put:
+      tags: [Customers]
+      summary: Update customer metadata
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metadata]
+              properties:
+                metadata:
+                  type: object
+      responses:
+        '200':
+          description: Metadata updated
+
+  # ── Knowledge Articles ──
+  /tenants/{tenantId}/knowledge-articles:
+    get:
+      tags: [Knowledge Articles]
+      summary: List knowledge articles
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated article list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KnowledgeArticle'
+    post:
+      tags: [Knowledge Articles]
+      summary: Create knowledge article
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                category:
+                  type: string
+                language:
+                  type: string
+      responses:
+        '201':
+          description: Article created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeArticle'
+
+  /tenants/{tenantId}/knowledge-articles/{id}:
+    get:
+      tags: [Knowledge Articles]
+      summary: Get knowledge article
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Article details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeArticle'
+    put:
+      tags: [Knowledge Articles]
+      summary: Update knowledge article
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                category:
+                  type: string
+                language:
+                  type: string
+      responses:
+        '200':
+          description: Article updated
+    delete:
+      tags: [Knowledge Articles]
+      summary: Soft-delete knowledge article
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+
+  # ── Drafts ──
+  /tenants/{tenantId}/tickets/{id}/draft:
+    post:
+      tags: [Drafts]
+      summary: Generate AI draft for ticket
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Draft generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+
+  /tenants/{tenantId}/tickets/{id}/drafts:
+    get:
+      tags: [Drafts]
+      summary: List drafts for ticket
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of drafts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Draft'
+
+  /tenants/{tenantId}/drafts/{id}:
+    patch:
+      tags: [Drafts]
+      summary: Approve or reject draft
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [approved, rejected]
+                reviewed_by:
+                  type: string
+      responses:
+        '200':
+          description: Draft status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+
+  /tenants/{tenantId}/drafts/{id}/send:
+    post:
+      tags: [Drafts]
+      summary: Send approved draft
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Draft sent
+        '400':
+          description: Draft must be approved first
+
+  # ── Webhooks ──
+  /webhooks/{tenantSlug}/{appId}:
+    post:
+      tags: [Webhooks]
+      summary: Receive webhook from provider
+      parameters:
+        - name: tenantSlug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook received
+        '401':
+          description: Invalid signature

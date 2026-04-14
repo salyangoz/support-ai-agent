@@ -1,24 +1,27 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createTicket, createDraft } from '../helpers/fixtures';
 
-const app = createApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 describe('Feature: Drafts', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('GET /api/v1/tenants/:tenantId/tickets/:id/drafts', () => {
+  describe('GET /tenants/:tenantId/tickets/:id/drafts', () => {
     it('should return empty list initially', async () => {
       const tenant = await createTenant();
       const ticket = await createTicket(tenant.id);
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets/${ticket.id}/drafts`)
+        .get(`/tenants/${tenant.id}/tickets/${ticket.id}/drafts`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -32,7 +35,7 @@ describe('Feature: Drafts', () => {
       await createDraft(ticket.id, tenant.id, { draft_response: 'Draft 2' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets/${ticket.id}/drafts`)
+        .get(`/tenants/${tenant.id}/tickets/${ticket.id}/drafts`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -40,14 +43,14 @@ describe('Feature: Drafts', () => {
     });
   });
 
-  describe('PATCH /api/v1/tenants/:tenantId/drafts/:id', () => {
+  describe('PATCH /tenants/:tenantId/drafts/:id', () => {
     it('should update status to approved', async () => {
       const tenant = await createTenant();
       const ticket = await createTicket(tenant.id);
       const draft = await createDraft(ticket.id, tenant.id);
 
       const res = await request
-        .patch(`/api/v1/tenants/${tenant.id}/drafts/${draft.id}`)
+        .patch(`/tenants/${tenant.id}/drafts/${draft.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({ status: 'approved', reviewed_by: 'admin@example.com' });
 
@@ -61,7 +64,7 @@ describe('Feature: Drafts', () => {
       const draft = await createDraft(ticket.id, tenant.id);
 
       const res = await request
-        .patch(`/api/v1/tenants/${tenant.id}/drafts/${draft.id}`)
+        .patch(`/tenants/${tenant.id}/drafts/${draft.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({ status: 'rejected' });
 
@@ -75,7 +78,7 @@ describe('Feature: Drafts', () => {
       const draft = await createDraft(ticket.id, tenant.id);
 
       const res = await request
-        .patch(`/api/v1/tenants/${tenant.id}/drafts/${draft.id}`)
+        .patch(`/tenants/${tenant.id}/drafts/${draft.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({ status: 'invalid-status' });
 
@@ -88,7 +91,7 @@ describe('Feature: Drafts', () => {
       const draft = await createDraft(ticket.id, tenant.id);
 
       const res = await request
-        .patch(`/api/v1/tenants/${tenant.id}/drafts/${draft.id}`)
+        .patch(`/tenants/${tenant.id}/drafts/${draft.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({});
 
@@ -99,7 +102,7 @@ describe('Feature: Drafts', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .patch(`/api/v1/tenants/${tenant.id}/drafts/99999`)
+        .patch(`/tenants/${tenant.id}/drafts/00000000-0000-0000-0000-000000000000`)
         .set('X-API-Key', tenant.api_key)
         .send({ status: 'approved' });
 

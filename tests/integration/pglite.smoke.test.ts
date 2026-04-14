@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { setupPGliteDb, teardownPGliteDb, truncateAllPGlite, getPGlitePool } from '../helpers/pgliteDb';
 import { PrismaClient } from '../../src/generated/prisma/client';
+import { generateId } from '../../src/utils/uuid';
 
 let prisma: PrismaClient;
 
@@ -16,7 +17,7 @@ describe('PGlite Smoke Test', () => {
 
   it('should create a tenant via Prisma', async () => {
     const tenant = await prisma.tenant.create({
-      data: { name: 'Acme', slug: 'acme', apiKey: 'key-1', settings: {} },
+      data: { id: generateId(), name: 'Acme', slug: 'acme', apiKey: 'key-1', settings: {} },
     });
 
     expect(tenant.id).toBeDefined();
@@ -27,6 +28,7 @@ describe('PGlite Smoke Test', () => {
     const tenant = await prisma.tenant.findFirst();
     const app = await prisma.app.create({
       data: {
+        id: generateId(),
         tenantId: tenant!.id,
         code: 'intercom',
         type: 'ticket',
@@ -45,6 +47,7 @@ describe('PGlite Smoke Test', () => {
     const app = await prisma.app.findFirst();
     const ticket = await prisma.ticket.create({
       data: {
+        id: generateId(),
         tenantId: tenant!.id,
         inputAppId: app!.id,
         externalId: 'conv-1',
@@ -61,13 +64,13 @@ describe('PGlite Smoke Test', () => {
     const tenant = await prisma.tenant.findFirst();
     const article = await prisma.knowledgeArticle.create({
       data: {
+        id: generateId(),
         tenantId: tenant!.id,
         title: 'Shipping FAQ',
         content: 'Orders ship in 3-5 days',
       },
     });
 
-    // Store a vector embedding via raw SQL (must be 1536 dims to match schema)
     const pool = getPGlitePool();
     const vec1536 = '[' + Array(1536).fill(0).map((_, i) => (i * 0.001).toFixed(4)).join(',') + ']';
     await pool.query(
@@ -75,7 +78,6 @@ describe('PGlite Smoke Test', () => {
       [vec1536, article.id],
     );
 
-    // Verify vector was stored
     const { rows } = await pool.query(
       'SELECT id, title FROM knowledge_articles WHERE embedding IS NOT NULL AND tenant_id = $1',
       [tenant!.id],

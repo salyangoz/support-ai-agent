@@ -17,17 +17,17 @@ export async function createTenant(data: {
 }
 
 export async function updateTenant(
-  id: number,
+  id: string,
   data: { name?: string; settings?: Record<string, unknown>; isActive?: boolean },
 ) {
   return tenantRepo.updateTenant(id, data);
 }
 
-export async function getTenant(id: number) {
+export async function getTenant(id: string) {
   return tenantRepo.findTenantById(id);
 }
 
-export async function getTenantById(id: number) {
+export async function getTenantById(id: string) {
   return tenantRepo.findTenantById(id);
 }
 

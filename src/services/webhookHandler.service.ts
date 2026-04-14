@@ -111,10 +111,10 @@ async function handleTicketClosed(
 
   await ticketRepo.updateTicketState(tenant.id, ticket.id, 'closed');
 
-  await embedClosedTicketMessages(tenant.id, ticket.id);
+  await embedClosedTicketMessages(tenant.id, ticket.id, tenant.settings.ai_credentials);
 }
 
-async function embedClosedTicketMessages(tenantId: number, ticketId: number) {
+async function embedClosedTicketMessages(tenantId: string, ticketId: string, credentials?: { api_key?: string }) {
   const messages = await messageRepo.findMessagesByTicketId(ticketId, tenantId);
   const agentMessagesWithoutEmbedding = messages.filter(
     (m: any) => m.authorRole === 'agent' && !m.embedding && m.body,
@@ -124,7 +124,7 @@ async function embedClosedTicketMessages(tenantId: number, ticketId: number) {
     if (!msg.body) {
       continue;
     }
-    const embedding = await embed(msg.body);
+    const embedding = await embed(msg.body, credentials);
     if (embedding) {
       await messageRepo.updateMessageEmbedding(msg.id, embedding);
     }
@@ -147,7 +147,7 @@ async function handleTicketAssigned(
   }
 }
 
-async function findOrCreateCustomerFromEvent(tenantId: number, event: WebhookEvent) {
+async function findOrCreateCustomerFromEvent(tenantId: string, event: WebhookEvent) {
   if (!event.data.customerEmail) {
     return null;
   }

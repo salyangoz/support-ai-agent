@@ -1,0 +1,21 @@
+{
+  "name": "@yengec/ai",
+  "version": "1.0.0",
+  "description": "Yengec AI SDK — chat and embedding client for ai.yengec.co",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}

@@ -1,8 +1,9 @@
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
 
 export async function findDraftsByTicketId(
-  tenantId: number,
-  ticketId: number,
+  tenantId: string,
+  ticketId: string,
 ) {
   return getPrisma().draft.findMany({
     where: { tenantId, ticketId },
@@ -10,15 +11,15 @@ export async function findDraftsByTicketId(
   });
 }
 
-export async function findDraftById(tenantId: number, id: number) {
+export async function findDraftById(tenantId: string, id: string) {
   return getPrisma().draft.findFirst({
     where: { tenantId, id },
   });
 }
 
 export async function createDraft(data: {
-  ticketId: number;
-  tenantId: number;
+  ticketId: string;
+  tenantId: string;
   promptContext?: string;
   draftResponse: string;
   aiModel?: string;
@@ -26,6 +27,7 @@ export async function createDraft(data: {
 }) {
   return getPrisma().draft.create({
     data: {
+      id: generateId(),
       ticketId: data.ticketId,
       tenantId: data.tenantId,
       promptContext: data.promptContext ?? null,
@@ -37,8 +39,8 @@ export async function createDraft(data: {
 }
 
 export async function updateDraftStatus(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   status: string,
   reviewedBy?: string,
 ) {

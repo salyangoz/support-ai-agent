@@ -1,15 +1,18 @@
+# ─── API Deployment ───
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: support-ai-agent
+  name: support-ai-api
   namespace: support-ai
   labels:
     app: support-ai-agent
+    component: api
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: support-ai-agent
+      component: api
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,10 +22,12 @@ spec:
     metadata:
       labels:
         app: support-ai-agent
+        component: api
     spec:
       containers:
-        - name: support-ai-agent
+        - name: api
           image: ghcr.io/salyangoz/support-ai-agent:latest
+          command: ["node", "dist/index.js"]
           ports:
             - containerPort: 3001
               protocol: TCP
@@ -54,3 +59,46 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+---
+# ─── Worker Deployment ───
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-ai-worker
+  namespace: support-ai
+  labels:
+    app: support-ai-agent
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: support-ai-agent
+      component: worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: support-ai-agent
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/salyangoz/support-ai-agent:latest
+          command: ["node", "dist/worker.js"]
+          envFrom:
+            - configMapRef:
+                name: support-ai-config
+            - secretRef:
+                name: support-ai-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

@@ -8,7 +8,7 @@ export async function list(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { category, search, is_active, page, limit } = req.query;
 
     const articles = await knowledgeBaseService.getArticles(tenantId, {
@@ -31,8 +31,8 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
     const article = await knowledgeBaseService.getArticleById(tenantId, id);
 
     if (!article) {
@@ -52,7 +52,7 @@ export async function create(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { title, content, category, language } = req.body;
 
     if (!title || !content) {
@@ -82,8 +82,8 @@ export async function update(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
     const { title, content, category, language } = req.body;
 
     const article = await knowledgeBaseService.updateArticle(tenantId, id, {
@@ -110,8 +110,8 @@ export async function remove(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
 
     const article = await knowledgeBaseService.softDeleteArticle(
       tenantId,

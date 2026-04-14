@@ -1,12 +1,16 @@
 import crypto from 'crypto';
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import supertest from 'supertest';
-import { createApp as createExpressApp } from '../../src/index';
+
+// Mock the webhook handler to prevent async background processing during tests
+vi.mock('../../src/services/webhookHandler.service', () => ({
+  handleEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createApp } from '../helpers/fixtures';
 
-const app = createExpressApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 function buildIntercomPayload(): Record<string, any> {
   return {
@@ -43,7 +47,11 @@ function computeHmacSignature(secret: string, body: string): string {
 }
 
 describe('Feature: Webhooks', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
@@ -65,9 +73,9 @@ describe('Feature: Webhooks', () => {
 
       const res = await request
         .post(`/webhooks/${tenant.slug}/${appRecord.id}`)
-        .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', signature)
-        .send(Buffer.from(body));
+        .type('application/json')
+        .send(body);
 
       expect(res.status).toBe(200);
     });
@@ -115,7 +123,7 @@ describe('Feature: Webhooks', () => {
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/99999`)
+        .post(`/webhooks/${tenant.slug}/00000000-0000-0000-0000-000000000000`)
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=anything')
         .send(Buffer.from(body));

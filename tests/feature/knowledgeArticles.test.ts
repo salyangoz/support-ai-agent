@@ -1,23 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createKnowledgeArticle } from '../helpers/fixtures';
 
-const app = createApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 describe('Feature: Knowledge Articles', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('POST /api/v1/tenants/:tenantId/knowledge-articles', () => {
+  describe('POST /tenants/:tenantId/knowledge-articles', () => {
     it('should create an article and return 201', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/knowledge-articles`)
+        .post(`/tenants/${tenant.id}/knowledge-articles`)
         .set('X-API-Key', tenant.api_key)
         .send({
           title: 'Getting Started',
@@ -37,7 +40,7 @@ describe('Feature: Knowledge Articles', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/knowledge-articles`)
+        .post(`/tenants/${tenant.id}/knowledge-articles`)
         .set('X-API-Key', tenant.api_key)
         .send({ content: 'No title here' });
 
@@ -45,14 +48,14 @@ describe('Feature: Knowledge Articles', () => {
     });
   });
 
-  describe('GET /api/v1/tenants/:tenantId/knowledge-articles', () => {
+  describe('GET /tenants/:tenantId/knowledge-articles', () => {
     it('should list articles for the tenant', async () => {
       const tenant = await createTenant();
       await createKnowledgeArticle(tenant.id, { title: 'Article 1' });
       await createKnowledgeArticle(tenant.id, { title: 'Article 2' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/knowledge-articles`)
+        .get(`/tenants/${tenant.id}/knowledge-articles`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -60,13 +63,13 @@ describe('Feature: Knowledge Articles', () => {
     });
   });
 
-  describe('GET /api/v1/tenants/:tenantId/knowledge-articles/:id', () => {
+  describe('GET /tenants/:tenantId/knowledge-articles/:id', () => {
     it('should return a single article', async () => {
       const tenant = await createTenant();
       const article = await createKnowledgeArticle(tenant.id, { title: 'FAQ' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/knowledge-articles/${article.id}`)
+        .get(`/tenants/${tenant.id}/knowledge-articles/${article.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -77,20 +80,20 @@ describe('Feature: Knowledge Articles', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/knowledge-articles/99999`)
+        .get(`/tenants/${tenant.id}/knowledge-articles/00000000-0000-0000-0000-000000000000`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(404);
     });
   });
 
-  describe('PUT /api/v1/tenants/:tenantId/knowledge-articles/:id', () => {
+  describe('PUT /tenants/:tenantId/knowledge-articles/:id', () => {
     it('should update an article', async () => {
       const tenant = await createTenant();
       const article = await createKnowledgeArticle(tenant.id, { title: 'Old Title' });
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/knowledge-articles/${article.id}`)
+        .put(`/tenants/${tenant.id}/knowledge-articles/${article.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({ title: 'New Title', content: 'Updated content' });
 
@@ -100,19 +103,19 @@ describe('Feature: Knowledge Articles', () => {
     });
   });
 
-  describe('DELETE /api/v1/tenants/:tenantId/knowledge-articles/:id', () => {
+  describe('DELETE /tenants/:tenantId/knowledge-articles/:id', () => {
     it('should soft delete an article and return 204', async () => {
       const tenant = await createTenant();
       const article = await createKnowledgeArticle(tenant.id);
 
       const res = await request
-        .delete(`/api/v1/tenants/${tenant.id}/knowledge-articles/${article.id}`)
+        .delete(`/tenants/${tenant.id}/knowledge-articles/${article.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(204);
 
       const showRes = await request
-        .get(`/api/v1/tenants/${tenant.id}/knowledge-articles/${article.id}`)
+        .get(`/tenants/${tenant.id}/knowledge-articles/${article.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(showRes.body.is_active).toBe(false);
@@ -126,7 +129,7 @@ describe('Feature: Knowledge Articles', () => {
       await createKnowledgeArticle(tenantA.id, { title: 'Private Article' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenantB.id}/knowledge-articles`)
+        .get(`/tenants/${tenantB.id}/knowledge-articles`)
         .set('X-API-Key', tenantB.api_key);
 
       expect(res.status).toBe(200);
@@ -138,7 +141,7 @@ describe('Feature: Knowledge Articles', () => {
       const tenantB = await createTenant({ name: 'B', slug: 'kb2' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenantB.id}/knowledge-articles`)
+        .get(`/tenants/${tenantB.id}/knowledge-articles`)
         .set('X-API-Key', tenantA.api_key);
 
       expect(res.status).toBe(403);

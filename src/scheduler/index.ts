@@ -1,43 +1,28 @@
-import cron from 'node-cron';
+import { getQueue, QUEUE_NAMES } from '../queues/queues';
 import { logger } from '../utils/logger';
-import * as tenantService from '../services/tenant.service';
-import * as appService from '../services/app.service';
-import * as ticketSyncService from '../services/ticketSync.service';
 
-export function startScheduler(): void {
-  // Sync tickets every 5 minutes for all active tenants
-  cron.schedule('*/5 * * * *', async () => {
-    logger.info('Starting scheduled ticket sync');
-    try {
-      const tenants = await tenantService.getActiveTenants();
+const SCAN_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
-      for (const tenant of tenants) {
-        const inputApps = await appService.getActiveInputApps(tenant.id);
+/**
+ * Registers repeatable scanner jobs in BullMQ.
+ * All scanners run every 10 minutes.
+ * If a previous scan is still active, BullMQ skips the new one (jobId dedup).
+ */
+export async function registerRepeatableJobs(): Promise<void> {
+  const scanners = [
+    QUEUE_NAMES.SCAN_TICKET_SYNC,
+    QUEUE_NAMES.SCAN_MESSAGE_EMBEDDINGS,
+    QUEUE_NAMES.SCAN_ARTICLE_EMBEDDINGS,
+    QUEUE_NAMES.SCAN_KB_SYNC,
+  ];
 
-        for (const app of inputApps) {
-          try {
-            await ticketSyncService.syncInputApp(tenant as any, app as any);
-            logger.info(`Synced app ${app.code} (id: ${app.id}) for tenant ${tenant.slug}`);
-          } catch (err) {
-            logger.error(`Sync failed for tenant ${tenant.slug}, app ${app.code} (id: ${app.id})`, err);
-          }
-        }
-      }
-    } catch (err) {
-      logger.error('Scheduled sync failed', err);
-    }
-  });
+  for (const name of scanners) {
+    await getQueue(name).upsertJobScheduler(
+      `${name}-repeat`,
+      { every: SCAN_INTERVAL },
+      { name },
+    );
+  }
 
-  // Backfill missing embeddings daily at 2 AM
-  cron.schedule('0 2 * * *', async () => {
-    logger.info('Starting embedding backfill');
-    try {
-      await ticketSyncService.backfillMissingEmbeddings();
-      logger.info('Embedding backfill completed');
-    } catch (err) {
-      logger.error('Embedding backfill failed', err);
-    }
-  });
-
-  logger.info('Scheduler started');
+  logger.info('Repeatable scanner jobs registered (every 10 min)');
 }

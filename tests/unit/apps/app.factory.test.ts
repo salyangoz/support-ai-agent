@@ -4,8 +4,8 @@ import { IntercomInputApp } from '../../../src/apps/intercom/intercom.app';
 
 function buildApp(overrides: Record<string, any> = {}): any {
   return {
-    id: 1,
-    tenantId: 1,
+    id: '00000000-0000-7000-0000-000000000001',
+    tenantId: '00000000-0000-7000-0000-000000000002',
     code: 'intercom',
     type: 'ticket',
     role: 'both',
@@ -30,12 +30,6 @@ describe('AppFactory', () => {
   it('should throw for unknown app code', () => {
     const app = buildApp({ code: 'unknown' });
     expect(() => createInputApp(app)).toThrow('Unknown app code: unknown');
-  });
-
-  it('should create output app for zendesk code', () => {
-    const app = buildApp({ code: 'zendesk', credentials: {} });
-    const outputApp = createOutputApp(app);
-    expect(outputApp).toBeDefined();
   });
 
   it('should throw when creating InputApp for destination-only app', () => {

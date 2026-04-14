@@ -35,8 +35,8 @@ export async function webhookAuth(
       return;
     }
 
-    const appId = Number(appIdParam);
-    if (isNaN(appId)) {
+    const appId = appIdParam;
+    if (!appId) {
       res.status(400).json({ error: 'Invalid app ID' });
       return;
     }

@@ -28,9 +28,7 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenant = await tenantService.getTenantById(
-      Number(req.params.tenantId),
-    );
+    const tenant = await tenantService.getTenantById(req.params.tenantId as string);
 
     if (!tenant) {
       res.status(404).json({ error: 'Tenant not found' });
@@ -51,7 +49,7 @@ export async function update(
   try {
     const { name, settings } = req.body;
     const tenant = await tenantService.updateTenant(
-      Number(req.params.tenantId),
+      req.params.tenantId as string,
       { name, settings },
     );
 

@@ -39,25 +39,9 @@ export async function setupPGliteDb(): Promise<{ prisma: PrismaClient; pool: Poo
   const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
 
   for (const file of files) {
-    if (file === '011_migrate_providers_to_apps.sql') continue;
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
     await pool.query(sql);
   }
-
-  // Clean up legacy schema (migration 011 does this in prod)
-  await pool.query('ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_tenant_id_provider_external_id_key');
-  await pool.query('ALTER TABLE tickets DROP COLUMN IF EXISTS provider');
-  await pool.query('DROP TABLE IF EXISTS tenant_providers');
-  await pool.query(`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'tickets_tenant_id_input_app_id_external_id_key'
-      ) THEN
-        ALTER TABLE tickets ADD CONSTRAINT tickets_tenant_id_input_app_id_external_id_key
-          UNIQUE (tenant_id, input_app_id, external_id);
-      END IF;
-    END $$;
-  `);
 
   // Create Prisma client connected to PGlite
   const adapter = new PrismaPg(pool);
@@ -72,8 +56,8 @@ export async function setupPGliteDb(): Promise<{ prisma: PrismaClient; pool: Poo
 export async function truncateAllPGlite(): Promise<void> {
   if (!pool) return;
   await pool.query(`
-    TRUNCATE TABLE drafts, messages, tickets, knowledge_articles,
-    customers, apps, tenants CASCADE
+    TRUNCATE TABLE drafts, messages, tickets, knowledge_chunks, knowledge_articles,
+    customers, apps, tenant_users, users, tenants CASCADE
   `);
 }
 

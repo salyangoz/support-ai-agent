@@ -19,13 +19,25 @@ vi.mock('axios', () => {
   };
 });
 
+// Mock the yengec-ai SDK since it has its own axios instance
+vi.mock('../../src/lib/yengec-ai', () => {
+  const mockChat = vi.fn();
+  const mockEmbed = vi.fn();
+  return {
+    chat: mockChat,
+    embed: mockEmbed,
+  };
+});
+
 import axios from 'axios';
+import { chat as mockYengecChat, embed as mockYengecEmbed } from '../../src/lib/yengec-ai';
 import * as webhookHandler from '../../src/services/webhookHandler.service';
 import * as aiDraftService from '../../src/services/aiDraft.service';
 import * as ticketSyncService from '../../src/services/ticketSync.service';
 import { createInputApp } from '../../src/apps/app.factory';
 import { resolveOutputApps } from '../../src/apps/app.resolver';
 import { Tenant, App } from '../../src/models/types';
+import { generateId } from '../../src/utils/uuid';
 
 let prisma: PrismaClient;
 let pool: Pool;
@@ -50,6 +62,7 @@ function makeVector(seed: number = 0): string {
 async function createTestTenant(settings: Record<string, any> = {}): Promise<Tenant> {
   const t = await prisma.tenant.create({
     data: {
+      id: generateId(),
       name: 'Test Corp',
       slug: 'test-corp',
       apiKey: 'test-key-123',
@@ -60,9 +73,10 @@ async function createTestTenant(settings: Record<string, any> = {}): Promise<Ten
   return { ...t, settings: t.settings as any } as any;
 }
 
-async function createTestApp(tenantId: number, overrides: Record<string, any> = {}): Promise<App> {
+async function createTestApp(tenantId: string, overrides: Record<string, any> = {}): Promise<App> {
   const a = await prisma.app.create({
     data: {
+      id: generateId(),
       tenantId,
       code: 'intercom',
       type: 'ticket',
@@ -132,6 +146,7 @@ describe('E2E Pipeline Integration Tests', () => {
       // Create initial ticket
       const ticket = await prisma.ticket.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           inputAppId: app.id,
           externalId: 'conv-200',
@@ -142,6 +157,7 @@ describe('E2E Pipeline Integration Tests', () => {
       // Create initial customer message so generateDraft has something to work with
       await prisma.message.create({
         data: {
+          id: generateId(),
           ticketId: ticket.id,
           tenantId: tenant.id,
           externalId: 'msg-prev',
@@ -151,12 +167,8 @@ describe('E2E Pipeline Integration Tests', () => {
       });
 
       // Mock external HTTP: embed + AI chat
-      vi.mocked(axios.post).mockImplementation(async (url: string) => {
-        if (typeof url === 'string' && url.includes('/embed')) {
-          return { data: { vector: Array(1536).fill(0.01) } };
-        }
-        return { data: { answer: 'Hi! Let me help you with that.', tokens_used: 150 } };
-      });
+      vi.mocked(mockYengecEmbed).mockResolvedValue(Array(1536).fill(0.01));
+      vi.mocked(mockYengecChat).mockResolvedValue({ text: 'Hi! Let me help you with that.', tokensUsed: 150 });
 
       await webhookHandler.handleEvent(tenant, app as any, {
         type: 'new_customer_reply',
@@ -196,6 +208,7 @@ describe('E2E Pipeline Integration Tests', () => {
       // Pre-create ticket with message
       const ticket = await prisma.ticket.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           inputAppId: app.id,
           externalId: 'conv-300',
@@ -204,6 +217,7 @@ describe('E2E Pipeline Integration Tests', () => {
       });
       await prisma.message.create({
         data: {
+          id: generateId(),
           ticketId: ticket.id,
           tenantId: tenant.id,
           externalId: 'msg-init',
@@ -212,13 +226,9 @@ describe('E2E Pipeline Integration Tests', () => {
         },
       });
 
-      // Mock external HTTP: embed + AI chat
-      vi.mocked(axios.post).mockImplementation(async (url: string) => {
-        if (typeof url === 'string' && url.includes('/embed')) {
-          return { data: { vector: Array(1536).fill(0.01) } };
-        }
-        return { data: { answer: 'Auto-generated reply', tokens_used: 100 } };
-      });
+      // Mock AI SDK: embed + chat
+      vi.mocked(mockYengecEmbed).mockResolvedValue(Array(1536).fill(0.01));
+      vi.mocked(mockYengecChat).mockResolvedValue({ text: 'Auto-generated reply', tokensUsed: 100 });
 
       // Mock Intercom reply API (sendReply creates an axios instance internally)
       vi.mocked(axios.create).mockReturnValue({
@@ -249,6 +259,7 @@ describe('E2E Pipeline Integration Tests', () => {
 
       const ticket = await prisma.ticket.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           inputAppId: app.id,
           externalId: 'conv-400',
@@ -259,6 +270,7 @@ describe('E2E Pipeline Integration Tests', () => {
       // Create agent message (should get embedded on close)
       await prisma.message.create({
         data: {
+          id: generateId(),
           ticketId: ticket.id,
           tenantId: tenant.id,
           externalId: 'msg-agent-1',
@@ -268,9 +280,7 @@ describe('E2E Pipeline Integration Tests', () => {
       });
 
       // Mock embedding service
-      vi.mocked(axios.post).mockResolvedValue({
-        data: { vector: Array(1536).fill(0.01) },
-      });
+      vi.mocked(mockYengecEmbed).mockResolvedValue(Array(1536).fill(0.01));
 
       await webhookHandler.handleEvent(tenant, app as any, {
         type: 'ticket_closed',
@@ -306,7 +316,7 @@ describe('E2E Pipeline Integration Tests', () => {
     it('should fan-out to multiple output apps from tenant settings', async () => {
       const tenant = await createTestTenant();
       const app1 = await createTestApp(tenant.id, { role: 'destination', code: 'intercom' });
-      const app2 = await createTestApp(tenant.id, { role: 'destination', code: 'zendesk' });
+      const app2 = await createTestApp(tenant.id, { role: 'destination', code: 'intercom' });
 
       // Update tenant settings with output pipeline
       await prisma.tenant.update({
@@ -326,7 +336,7 @@ describe('E2E Pipeline Integration Tests', () => {
     it('should use ticket-level override over tenant pipeline', async () => {
       const tenant = await createTestTenant();
       const inputApp = await createTestApp(tenant.id, { role: 'both' });
-      const overrideApp = await createTestApp(tenant.id, { role: 'destination', code: 'zendesk' });
+      const overrideApp = await createTestApp(tenant.id, { role: 'destination', code: 'intercom' });
 
       const result = await resolveOutputApps(
         tenant.id,
@@ -355,6 +365,7 @@ describe('E2E Pipeline Integration Tests', () => {
 
       const customer = await prisma.customer.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           email: 'jane@test.com',
           name: 'Jane Doe',
@@ -364,6 +375,7 @@ describe('E2E Pipeline Integration Tests', () => {
 
       const ticket = await prisma.ticket.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           inputAppId: app.id,
           externalId: 'conv-500',
@@ -375,6 +387,7 @@ describe('E2E Pipeline Integration Tests', () => {
 
       await prisma.message.create({
         data: {
+          id: generateId(),
           ticketId: ticket.id,
           tenantId: tenant.id,
           externalId: 'msg-500',
@@ -383,35 +396,36 @@ describe('E2E Pipeline Integration Tests', () => {
         },
       });
 
-      // Create KB article (embedding stored via raw SQL)
+      // Create KB article + chunk (RAG search uses chunks)
       const article = await prisma.knowledgeArticle.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           title: 'Billing & Refunds',
           content: 'If you were charged twice, we can issue a refund within 14 days.',
           isActive: true,
         },
       });
+      const chunk = await prisma.knowledgeChunk.create({
+        data: {
+          id: generateId(),
+          articleId: article.id,
+          tenantId: tenant.id,
+          chunkIndex: 0,
+          content: 'Billing & Refunds\n\nIf you were charged twice, we can issue a refund within 14 days.',
+        },
+      });
       await pool.query(
-        'UPDATE knowledge_articles SET embedding = $1::vector WHERE id = $2',
-        [makeVector(1), article.id],
+        'UPDATE knowledge_chunks SET embedding = $1::vector WHERE id = $2',
+        [makeVector(1), chunk.id],
       );
 
       // Mock embedding service (for customer message embedding)
       const embeddingVector = Array(1536).fill(0).map((_, i) => (i + 1) * 0.001);
-      vi.mocked(axios.post).mockImplementation(async (url: string, data?: any) => {
-        if (typeof url === 'string' && url.includes('/embed')) {
-          return { data: { vector: embeddingVector } };
-        }
-        if (typeof url === 'string' && url.includes('/chat')) {
-          return {
-            data: {
-              answer: 'Hi Jane, I see you were double-charged. I will process a refund immediately.',
-              tokens_used: 200,
-            },
-          };
-        }
-        return { data: {} };
+      vi.mocked(mockYengecEmbed).mockResolvedValue(embeddingVector);
+      vi.mocked(mockYengecChat).mockResolvedValue({
+        text: 'Hi Jane, I see you were double-charged. I will process a refund immediately.',
+        tokensUsed: 200,
       });
 
       const draft = await aiDraftService.generateDraft(tenant, ticket.id);
@@ -437,6 +451,7 @@ describe('E2E Pipeline Integration Tests', () => {
 
       const ticket = await prisma.ticket.create({
         data: {
+          id: generateId(),
           tenantId: tenant.id,
           inputAppId: app.id,
           externalId: 'conv-600',
@@ -446,6 +461,7 @@ describe('E2E Pipeline Integration Tests', () => {
 
       const draft = await prisma.draft.create({
         data: {
+          id: generateId(),
           ticketId: ticket.id,
           tenantId: tenant.id,
           draftResponse: 'Your issue has been resolved.',
@@ -514,12 +530,7 @@ describe('E2E Pipeline Integration Tests', () => {
       } as any);
 
       // Mock embedding for agent messages
-      vi.mocked(axios.post).mockImplementation(async (url: string) => {
-        if (typeof url === 'string' && url.includes('/embed')) {
-          return { data: { vector: Array(1536).fill(0.02) } };
-        }
-        return { data: {} };
-      });
+      vi.mocked(mockYengecEmbed).mockResolvedValue(Array(1536).fill(0.02));
 
       await ticketSyncService.syncInputApp(tenant, app as any);
 

@@ -1,6 +1,7 @@
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
 
-export async function findTenantById(id: number) {
+export async function findTenantById(id: string) {
   return getPrisma().tenant.findUnique({ where: { id } });
 }
 
@@ -26,6 +27,7 @@ export async function createTenant(data: {
 }) {
   return getPrisma().tenant.create({
     data: {
+      id: generateId(),
       name: data.name,
       slug: data.slug,
       apiKey: data.apiKey,
@@ -35,7 +37,7 @@ export async function createTenant(data: {
 }
 
 export async function updateTenant(
-  id: number,
+  id: string,
   data: {
     name?: string;
     settings?: Record<string, unknown>;

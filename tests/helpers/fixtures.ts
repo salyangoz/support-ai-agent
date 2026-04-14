@@ -1,5 +1,7 @@
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { getTestPrisma } from './testDb';
+import { generateId } from '../../src/utils/uuid';
 
 let counter = 0;
 
@@ -13,6 +15,7 @@ export async function createTenant(
   const prisma = getTestPrisma();
   const n = nextId();
   const data = {
+    id: generateId(),
     name: `Test Tenant ${n}`,
     slug: `test-tenant-${n}`,
     apiKey: crypto.randomBytes(24).toString('hex'),
@@ -21,7 +24,6 @@ export async function createTenant(
     ...overrides,
   };
 
-  // Map snake_case overrides to camelCase
   if (overrides.api_key) {
     data.apiKey = overrides.api_key;
   }
@@ -43,11 +45,12 @@ export async function createTenant(
 }
 
 export async function createApp(
-  tenantId: number,
+  tenantId: string,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const data = {
+    id: generateId(),
     tenantId,
     code: overrides.code ?? 'intercom',
     type: overrides.type ?? 'ticket',
@@ -80,12 +83,13 @@ export async function createApp(
 }
 
 export async function createCustomer(
-  tenantId: number,
+  tenantId: string,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const n = nextId();
   const data = {
+    id: generateId(),
     tenantId,
     email: overrides.email ?? `customer${n}@example.com`,
     name: overrides.name ?? `Customer ${n}`,
@@ -109,12 +113,13 @@ export async function createCustomer(
 }
 
 export async function createTicket(
-  tenantId: number,
+  tenantId: string,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const n = nextId();
   const data = {
+    id: generateId(),
     tenantId,
     inputAppId: overrides.input_app_id ?? null,
     outputAppId: overrides.output_app_id ?? null,
@@ -146,13 +151,14 @@ export async function createTicket(
 }
 
 export async function createMessage(
-  ticketId: number,
-  tenantId: number,
+  ticketId: string,
+  tenantId: string,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const n = nextId();
   const data = {
+    id: generateId(),
     ticketId,
     tenantId,
     externalId: overrides.external_id ?? `msg-ext-${n}`,
@@ -177,12 +183,13 @@ export async function createMessage(
 }
 
 export async function createKnowledgeArticle(
-  tenantId: number,
+  tenantId: string,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const n = nextId();
   const data = {
+    id: generateId(),
     tenantId,
     title: overrides.title ?? `Article ${n}`,
     content: overrides.content ?? `Content for article ${n}`,
@@ -206,12 +213,13 @@ export async function createKnowledgeArticle(
 }
 
 export async function createDraft(
-  ticketId: number,
-  tenantId: number,
+  ticketId: string,
+  tenantId: string,
   overrides: Record<string, any> = {},
 ): Promise<any> {
   const prisma = getTestPrisma();
   const data = {
+    id: generateId(),
     ticketId,
     tenantId,
     promptContext: overrides.prompt_context ?? 'Test context',
@@ -234,5 +242,59 @@ export async function createDraft(
     reviewed_by: d.reviewedBy,
     reviewed_at: d.reviewedAt,
     created_at: d.createdAt,
+  };
+}
+
+export async function createUser(
+  overrides: Record<string, any> = {},
+): Promise<any> {
+  const prisma = getTestPrisma();
+  const n = nextId();
+  const password = overrides.password ?? 'testpassword123';
+  const passwordHash = await bcrypt.hash(password, 4); // low rounds for speed in tests
+
+  const data = {
+    id: generateId(),
+    email: overrides.email ?? `user${n}@example.com`,
+    passwordHash,
+    name: overrides.name ?? `Test User ${n}`,
+    isActive: overrides.is_active ?? true,
+  };
+
+  const u = await prisma.user.create({ data });
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    is_active: u.isActive,
+    created_at: u.createdAt,
+    updated_at: u.updatedAt,
+    _password: password,
+  };
+}
+
+export async function createTenantUser(
+  tenantId: string,
+  userId: string,
+  overrides: Record<string, any> = {},
+): Promise<any> {
+  const prisma = getTestPrisma();
+  const data = {
+    id: generateId(),
+    tenantId,
+    userId,
+    role: overrides.role ?? 'member',
+    isActive: overrides.is_active ?? true,
+  };
+
+  const tu = await prisma.tenantUser.create({ data });
+  return {
+    id: tu.id,
+    tenant_id: tu.tenantId,
+    user_id: tu.userId,
+    role: tu.role,
+    is_active: tu.isActive,
+    created_at: tu.createdAt,
+    updated_at: tu.updatedAt,
   };
 }

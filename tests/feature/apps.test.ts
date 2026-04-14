@@ -1,23 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp as createExpressApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createApp } from '../helpers/fixtures';
 
-const app = createExpressApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 describe('Feature: Apps', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('GET /api/v1/tenants/:tenantId/apps', () => {
+  describe('GET /tenants/:tenantId/apps', () => {
     it('should return empty list initially', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/apps`)
+        .get(`/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -29,7 +32,7 @@ describe('Feature: Apps', () => {
       await createApp(tenant.id);
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/apps`)
+        .get(`/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -40,12 +43,12 @@ describe('Feature: Apps', () => {
     });
   });
 
-  describe('POST /api/v1/tenants/:tenantId/apps', () => {
+  describe('POST /tenants/:tenantId/apps', () => {
     it('should add an app and return 201', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/apps`)
+        .post(`/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key)
         .send({
           code: 'intercom',
@@ -67,7 +70,7 @@ describe('Feature: Apps', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/apps`)
+        .post(`/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key)
         .send({ credentials: { accessToken: 'tok' } });
 
@@ -75,27 +78,27 @@ describe('Feature: Apps', () => {
     });
   });
 
-  describe('PUT /api/v1/tenants/:tenantId/apps/:appId', () => {
+  describe('PUT /tenants/:tenantId/apps/:appId', () => {
     it('should update credentials', async () => {
       const tenant = await createTenant();
       const appRecord = await createApp(tenant.id);
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/apps/${appRecord.id}`)
+        .put(`/tenants/${tenant.id}/apps/${appRecord.id}`)
         .set('X-API-Key', tenant.api_key)
         .send({
           credentials: { accessToken: 'new-token', clientSecret: 'new-secret' },
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.credentials.accessToken).toBe('new-token');
+      expect(res.body.credentials.access_token).toBe('new-token');
     });
 
     it('should return 404 for non-existent app', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/apps/99999`)
+        .put(`/tenants/${tenant.id}/apps/00000000-0000-0000-0000-000000000000`)
         .set('X-API-Key', tenant.api_key)
         .send({ credentials: { token: 'abc' } });
 
@@ -103,19 +106,19 @@ describe('Feature: Apps', () => {
     });
   });
 
-  describe('DELETE /api/v1/tenants/:tenantId/apps/:appId', () => {
+  describe('DELETE /tenants/:tenantId/apps/:appId', () => {
     it('should remove app and return 204', async () => {
       const tenant = await createTenant();
       const appRecord = await createApp(tenant.id);
 
       const res = await request
-        .delete(`/api/v1/tenants/${tenant.id}/apps/${appRecord.id}`)
+        .delete(`/tenants/${tenant.id}/apps/${appRecord.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(204);
 
       const listRes = await request
-        .get(`/api/v1/tenants/${tenant.id}/apps`)
+        .get(`/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
       expect(listRes.body).toHaveLength(0);
@@ -129,7 +132,7 @@ describe('Feature: Apps', () => {
       await createApp(tenantB.id);
 
       const res = await request
-        .get(`/api/v1/tenants/${tenantB.id}/apps`)
+        .get(`/tenants/${tenantB.id}/apps`)
         .set('X-API-Key', tenantA.api_key);
 
       expect(res.status).toBe(403);

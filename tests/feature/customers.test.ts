@@ -1,23 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createCustomer } from '../helpers/fixtures';
 
-const app = createApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 describe('Feature: Customers', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('POST /api/v1/tenants/:tenantId/customers', () => {
+  describe('POST /tenants/:tenantId/customers', () => {
     it('should create a customer and return 201', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/customers`)
+        .post(`/tenants/${tenant.id}/customers`)
         .set('X-API-Key', tenant.api_key)
         .send({
           email: 'john@example.com',
@@ -37,14 +40,14 @@ describe('Feature: Customers', () => {
       const tenant = await createTenant();
 
       const first = await request
-        .post(`/api/v1/tenants/${tenant.id}/customers`)
+        .post(`/tenants/${tenant.id}/customers`)
         .set('X-API-Key', tenant.api_key)
         .send({ email: 'jane@example.com', name: 'Jane V1' });
 
       expect(first.status).toBe(201);
 
       const second = await request
-        .post(`/api/v1/tenants/${tenant.id}/customers`)
+        .post(`/tenants/${tenant.id}/customers`)
         .set('X-API-Key', tenant.api_key)
         .send({ email: 'jane@example.com', name: 'Jane V2' });
 
@@ -57,7 +60,7 @@ describe('Feature: Customers', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .post(`/api/v1/tenants/${tenant.id}/customers`)
+        .post(`/tenants/${tenant.id}/customers`)
         .set('X-API-Key', tenant.api_key)
         .send({ name: 'No Email' });
 
@@ -65,14 +68,14 @@ describe('Feature: Customers', () => {
     });
   });
 
-  describe('GET /api/v1/tenants/:tenantId/customers', () => {
+  describe('GET /tenants/:tenantId/customers', () => {
     it('should list customers for the tenant', async () => {
       const tenant = await createTenant();
       await createCustomer(tenant.id, { email: 'a@test.com', name: 'Alice' });
       await createCustomer(tenant.id, { email: 'b@test.com', name: 'Bob' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/customers`)
+        .get(`/tenants/${tenant.id}/customers`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -80,13 +83,13 @@ describe('Feature: Customers', () => {
     });
   });
 
-  describe('GET /api/v1/tenants/:tenantId/customers/:id', () => {
+  describe('GET /tenants/:tenantId/customers/:id', () => {
     it('should return a single customer', async () => {
       const tenant = await createTenant();
       const customer = await createCustomer(tenant.id, { email: 'show@test.com' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/customers/${customer.id}`)
+        .get(`/tenants/${tenant.id}/customers/${customer.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -97,20 +100,20 @@ describe('Feature: Customers', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/customers/99999`)
+        .get(`/tenants/${tenant.id}/customers/00000000-0000-0000-0000-000000000000`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(404);
     });
   });
 
-  describe('PUT /api/v1/tenants/:tenantId/customers/:id/metadata', () => {
+  describe('PUT /tenants/:tenantId/customers/:id/metadata', () => {
     it('should update customer metadata', async () => {
       const tenant = await createTenant();
       const customer = await createCustomer(tenant.id);
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/customers/${customer.id}/metadata`)
+        .put(`/tenants/${tenant.id}/customers/${customer.id}/metadata`)
         .set('X-API-Key', tenant.api_key)
         .send({ metadata: { tier: 'gold', region: 'eu' } });
 
@@ -124,7 +127,7 @@ describe('Feature: Customers', () => {
       const customer = await createCustomer(tenant.id);
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}/customers/${customer.id}/metadata`)
+        .put(`/tenants/${tenant.id}/customers/${customer.id}/metadata`)
         .set('X-API-Key', tenant.api_key)
         .send({});
 

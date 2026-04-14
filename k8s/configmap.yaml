@@ -9,4 +9,5 @@ data:
   NODE_ENV: production
   PORT: "3001"
   YENGEC_AI_BASE_URL: https://ai.yengec.co
+  REDIS_URL: redis://support-ai-redis:6379
   LOG_LEVEL: info

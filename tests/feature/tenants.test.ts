@@ -1,22 +1,25 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant } from '../helpers/fixtures';
 
-const app = createApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 const ADMIN_KEY = 'test-admin-key';
 
 describe('Feature: Tenants', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('POST /api/v1/tenants', () => {
+  describe('POST /tenants', () => {
     it('should create a tenant with admin key and return api_key', async () => {
       const res = await request
-        .post('/api/v1/tenants')
+        .post('/tenants')
         .set('X-API-Key', ADMIN_KEY)
         .send({ name: 'Acme Inc', slug: 'acme' });
 
@@ -30,7 +33,7 @@ describe('Feature: Tenants', () => {
 
     it('should return 401 without admin key', async () => {
       const res = await request
-        .post('/api/v1/tenants')
+        .post('/tenants')
         .send({ name: 'Acme Inc', slug: 'acme' });
 
       expect(res.status).toBe(401);
@@ -38,7 +41,7 @@ describe('Feature: Tenants', () => {
 
     it('should return 401 with wrong admin key', async () => {
       const res = await request
-        .post('/api/v1/tenants')
+        .post('/tenants')
         .set('X-API-Key', 'wrong-key')
         .send({ name: 'Acme Inc', slug: 'acme' });
 
@@ -47,7 +50,7 @@ describe('Feature: Tenants', () => {
 
     it('should return 400 when name or slug is missing', async () => {
       const res = await request
-        .post('/api/v1/tenants')
+        .post('/tenants')
         .set('X-API-Key', ADMIN_KEY)
         .send({ name: 'Acme Inc' });
 
@@ -55,12 +58,12 @@ describe('Feature: Tenants', () => {
     });
   });
 
-  describe('GET /api/v1/tenants/:id', () => {
+  describe('GET /tenants/:id', () => {
     it('should get tenant details with admin key', async () => {
       const tenant = await createTenant({ name: 'My Tenant', slug: 'my-tenant' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}`)
+        .get(`/tenants/${tenant.id}`)
         .set('X-API-Key', ADMIN_KEY);
 
       expect(res.status).toBe(200);
@@ -71,7 +74,7 @@ describe('Feature: Tenants', () => {
 
     it('should return 404 for non-existent tenant', async () => {
       const res = await request
-        .get('/api/v1/tenants/99999')
+        .get('/tenants/00000000-0000-0000-0000-000000000000')
         .set('X-API-Key', ADMIN_KEY);
 
       expect(res.status).toBe(404);
@@ -81,18 +84,18 @@ describe('Feature: Tenants', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}`);
+        .get(`/tenants/${tenant.id}`);
 
       expect(res.status).toBe(401);
     });
   });
 
-  describe('PUT /api/v1/tenants/:id', () => {
+  describe('PUT /tenants/:id', () => {
     it('should update tenant name', async () => {
       const tenant = await createTenant({ name: 'Old Name', slug: 'old-name' });
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}`)
+        .put(`/tenants/${tenant.id}`)
         .set('X-API-Key', ADMIN_KEY)
         .send({ name: 'New Name' });
 
@@ -104,7 +107,7 @@ describe('Feature: Tenants', () => {
       const tenant = await createTenant({ name: 'Acme', slug: 'acme' });
 
       const res = await request
-        .put(`/api/v1/tenants/${tenant.id}`)
+        .put(`/tenants/${tenant.id}`)
         .set('X-API-Key', ADMIN_KEY)
         .send({ settings: { auto_send_drafts: true, ai_model: 'gpt-4' } });
 
@@ -115,7 +118,7 @@ describe('Feature: Tenants', () => {
 
     it('should return 404 for non-existent tenant', async () => {
       const res = await request
-        .put('/api/v1/tenants/99999')
+        .put('/tenants/00000000-0000-0000-0000-000000000000')
         .set('X-API-Key', ADMIN_KEY)
         .send({ name: 'New Name' });
 

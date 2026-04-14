@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { adminAuth, tenantAuth } from '../middleware/auth';
+import { adminAuth, tenantOrUserAuth, userAuth, requireRole } from '../middleware/auth';
 import { webhookAuth } from '../middleware/webhookAuth';
 import { errorHandler } from '../middleware/errorHandler';
 import * as healthController from '../controllers/health.controller';
@@ -10,6 +10,8 @@ import * as customerController from '../controllers/customer.controller';
 import * as knowledgeBaseController from '../controllers/knowledgeBase.controller';
 import * as draftController from '../controllers/draft.controller';
 import * as webhookController from '../controllers/webhook.controller';
+import * as authController from '../controllers/auth.controller';
+import * as userController from '../controllers/user.controller';
 
 export function createRouter(): Router {
   const router = Router();
@@ -17,74 +19,173 @@ export function createRouter(): Router {
   // Health
   router.get('/health', healthController.getHealth);
 
-  // Admin routes
-  router.post('/api/v1/tenants', adminAuth, tenantController.create);
-  router.get('/api/v1/tenants/:tenantId', adminAuth, tenantController.show);
-  router.put('/api/v1/tenants/:tenantId', adminAuth, tenantController.update);
+  // Auth routes (public)
+  router.post('/auth/login', authController.login);
+  router.post('/auth/refresh', authController.refresh);
 
-  // App routes (replaces tenant provider routes)
-  router.get('/api/v1/tenants/:tenantId/apps', tenantAuth, appController.list);
-  router.get('/api/v1/tenants/:tenantId/apps/:appId', tenantAuth, appController.show);
-  router.post('/api/v1/tenants/:tenantId/apps', tenantAuth, appController.create);
-  router.put('/api/v1/tenants/:tenantId/apps/:appId', tenantAuth, appController.update);
-  router.delete('/api/v1/tenants/:tenantId/apps/:appId', tenantAuth, appController.remove);
+  // Auth routes (user auth required)
+  router.get('/auth/me', userAuth, authController.me);
+  router.post('/auth/change-password', userAuth, authController.changePassword);
+
+  // Admin routes
+  router.post('/tenants', adminAuth, tenantController.create);
+  router.get('/tenants/:tenantId', adminAuth, tenantController.show);
+  router.put('/tenants/:tenantId', adminAuth, tenantController.update);
+
+  // Admin bootstrap: create initial owner user for a tenant
+  router.post('/tenants/:tenantId/users/owner', adminAuth, userController.createOwner);
+
+  // User management routes (user auth + role)
+  router.get(
+    '/tenants/:tenantId/users',
+    userAuth, requireRole('owner', 'admin'),
+    userController.list,
+  );
+  router.get(
+    '/tenants/:tenantId/users/:userId',
+    userAuth, requireRole('owner', 'admin'),
+    userController.show,
+  );
+  router.post(
+    '/tenants/:tenantId/users',
+    userAuth, requireRole('owner', 'admin'),
+    userController.invite,
+  );
+  router.put(
+    '/tenants/:tenantId/users/:userId',
+    userAuth, requireRole('owner', 'admin'),
+    userController.update,
+  );
+  router.delete(
+    '/tenants/:tenantId/users/:userId',
+    userAuth, requireRole('owner'),
+    userController.remove,
+  );
+
+  // App routes
+  router.get(
+    '/tenants/:tenantId/apps',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    appController.list,
+  );
+  router.get(
+    '/tenants/:tenantId/apps/:appId',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    appController.show,
+  );
+  router.post(
+    '/tenants/:tenantId/apps',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    appController.create,
+  );
+  router.put(
+    '/tenants/:tenantId/apps/:appId',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    appController.update,
+  );
+  router.delete(
+    '/tenants/:tenantId/apps/:appId',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    appController.remove,
+  );
+  router.post(
+    '/tenants/:tenantId/apps/:appId/test',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    appController.test,
+  );
 
   // Ticket routes
-  router.get('/api/v1/tenants/:tenantId/tickets', tenantAuth, ticketController.list);
-  router.get('/api/v1/tenants/:tenantId/tickets/:id', tenantAuth, ticketController.show);
-  router.post('/api/v1/tenants/:tenantId/tickets/sync', tenantAuth, ticketController.sync);
+  router.get(
+    '/tenants/:tenantId/tickets',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    ticketController.list,
+  );
+  router.get(
+    '/tenants/:tenantId/tickets/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    ticketController.show,
+  );
+  router.post(
+    '/tenants/:tenantId/tickets/sync',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    ticketController.sync,
+  );
   router.patch(
-    '/api/v1/tenants/:tenantId/tickets/:id/output-app',
-    tenantAuth,
+    '/tenants/:tenantId/tickets/:id/output-app',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
     ticketController.updateOutputApp,
   );
 
   // Customer routes
-  router.get('/api/v1/tenants/:tenantId/customers', tenantAuth, customerController.list);
-  router.get('/api/v1/tenants/:tenantId/customers/:id', tenantAuth, customerController.show);
-  router.post('/api/v1/tenants/:tenantId/customers', tenantAuth, customerController.create);
+  router.get(
+    '/tenants/:tenantId/customers',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    customerController.list,
+  );
+  router.get(
+    '/tenants/:tenantId/customers/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    customerController.show,
+  );
+  router.post(
+    '/tenants/:tenantId/customers',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    customerController.create,
+  );
   router.put(
-    '/api/v1/tenants/:tenantId/customers/:id/metadata',
-    tenantAuth,
+    '/tenants/:tenantId/customers/:id/metadata',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
     customerController.updateMetadata,
   );
 
   // Knowledge article routes
   router.get(
-    '/api/v1/tenants/:tenantId/knowledge-articles',
-    tenantAuth,
+    '/tenants/:tenantId/knowledge-articles',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
     knowledgeBaseController.list,
   );
   router.get(
-    '/api/v1/tenants/:tenantId/knowledge-articles/:id',
-    tenantAuth,
+    '/tenants/:tenantId/knowledge-articles/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
     knowledgeBaseController.show,
   );
   router.post(
-    '/api/v1/tenants/:tenantId/knowledge-articles',
-    tenantAuth,
+    '/tenants/:tenantId/knowledge-articles',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
     knowledgeBaseController.create,
   );
   router.put(
-    '/api/v1/tenants/:tenantId/knowledge-articles/:id',
-    tenantAuth,
+    '/tenants/:tenantId/knowledge-articles/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
     knowledgeBaseController.update,
   );
   router.delete(
-    '/api/v1/tenants/:tenantId/knowledge-articles/:id',
-    tenantAuth,
+    '/tenants/:tenantId/knowledge-articles/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
     knowledgeBaseController.remove,
   );
 
   // Draft routes
-  router.post('/api/v1/tenants/:tenantId/tickets/:id/draft', tenantAuth, draftController.generate);
+  router.post(
+    '/tenants/:tenantId/tickets/:id/draft',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    draftController.generate,
+  );
   router.get(
-    '/api/v1/tenants/:tenantId/tickets/:id/drafts',
-    tenantAuth,
+    '/tenants/:tenantId/tickets/:id/drafts',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
     draftController.listByTicket,
   );
-  router.patch('/api/v1/tenants/:tenantId/drafts/:id', tenantAuth, draftController.updateStatus);
-  router.post('/api/v1/tenants/:tenantId/drafts/:id/send', tenantAuth, draftController.send);
+  router.patch(
+    '/tenants/:tenantId/drafts/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    draftController.updateStatus,
+  );
+  router.post(
+    '/tenants/:tenantId/drafts/:id/send',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    draftController.send,
+  );
 
   // Webhook routes (app ID based)
   router.post('/webhooks/:tenantSlug/:appId', webhookAuth, webhookController.receive);

@@ -10,7 +10,7 @@ export async function generate(
 ): Promise<void> {
   try {
     const tenant = req.tenant!;
-    const ticketId = Number(req.params.id);
+    const ticketId = req.params.id as string;
 
     const draft = await aiDraftService.generateDraft(tenant, ticketId);
     res.status(201).json(toSnakeCase(draft));
@@ -25,8 +25,8 @@ export async function listByTicket(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const ticketId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const ticketId = req.params.id as string;
 
     const drafts = await draftService.getDraftsByTicketId(
       tenantId,
@@ -44,8 +44,8 @@ export async function updateStatus(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const draftId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const draftId = req.params.id as string;
     const { status, reviewed_by } = req.body;
 
     if (!status || !['approved', 'rejected'].includes(status)) {
@@ -80,8 +80,8 @@ export async function send(
 ): Promise<void> {
   try {
     const tenant = req.tenant!;
-    const tenantId = Number(req.params.tenantId);
-    const draftId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const draftId = req.params.id as string;
 
     const draft = await draftService.getDraftById(tenantId, draftId);
 

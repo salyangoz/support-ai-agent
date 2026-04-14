@@ -1,12 +1,13 @@
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
 
 function formatEmbedding(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
 }
 
 export async function findMessagesByTicketId(
-  ticketId: number,
-  tenantId: number,
+  ticketId: string,
+  tenantId: string,
 ) {
   return getPrisma().message.findMany({
     where: { ticketId, tenantId },
@@ -15,8 +16,8 @@ export async function findMessagesByTicketId(
 }
 
 export async function upsertMessage(data: {
-  ticketId: number;
-  tenantId: number;
+  ticketId: string;
+  tenantId: string;
   externalId: string;
   authorRole: string;
   authorId?: string;
@@ -51,6 +52,7 @@ export async function upsertMessage(data: {
 
   return prisma.message.create({
     data: {
+      id: generateId(),
       ticketId: data.ticketId,
       tenantId: data.tenantId,
       externalId: data.externalId,
@@ -65,7 +67,7 @@ export async function upsertMessage(data: {
 }
 
 export async function updateMessageEmbedding(
-  id: number,
+  id: string,
   embedding: number[],
 ) {
   const prisma = getPrisma();
@@ -78,9 +80,9 @@ export async function updateMessageEmbedding(
 }
 
 export async function findSimilarAgentMessages(
-  tenantId: number,
+  tenantId: string,
   embedding: number[],
-  excludeTicketId: number,
+  excludeTicketId: string,
   limit: number,
 ) {
   const prisma = getPrisma();
@@ -104,7 +106,7 @@ export async function findSimilarAgentMessages(
   return results;
 }
 
-export async function findMessagesWithoutEmbedding(tenantId: number) {
+export async function findMessagesWithoutEmbedding(tenantId: string) {
   return getPrisma().$queryRawUnsafe<any[]>(
     `SELECT * FROM messages
      WHERE tenant_id = $1

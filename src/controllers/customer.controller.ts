@@ -8,7 +8,7 @@ export async function list(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { email, name, page, limit } = req.query;
 
     const customers = await customerService.getCustomers(tenantId, {
@@ -30,8 +30,8 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
     const customer = await customerService.getCustomerById(tenantId, id);
 
     if (!customer) {
@@ -51,7 +51,7 @@ export async function create(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { email, name, phone, external_id, metadata } = req.body;
 
     if (!email) {
@@ -80,8 +80,8 @@ export async function updateMetadata(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
     const { metadata } = req.body;
 
     if (!metadata) {

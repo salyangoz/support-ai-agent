@@ -1,5 +1,28 @@
+export type UserRole = 'owner' | 'admin' | 'member';
+
+export interface User {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string;
+  isActive: boolean;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TenantUser {
+  id: string;
+  tenantId: string;
+  userId: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Tenant {
-  id: number;
+  id: string;
   name: string;
   slug: string;
   apiKey: string;
@@ -16,16 +39,19 @@ export interface TenantSettings {
   embedding_dimension?: number;
   ai_service?: string;
   ai_model?: string;
+  ai_credentials?: {
+    api_key?: string;
+  };
   ai_instructions?: string;
   draft_tone?: string;
   max_context_tokens?: number;
   sync_lookback_minutes?: number;
-  output_app_ids?: number[];
+  output_app_ids?: string[];
 }
 
 export interface App {
-  id: number;
-  tenantId: number;
+  id: string;
+  tenantId: string;
   code: string;
   type: string;
   role: string;
@@ -34,13 +60,15 @@ export interface App {
   webhookSecret: string | null;
   config: Record<string, any>;
   isActive: boolean;
+  lastSyncedAt: Date | null;
+  lastError: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface Customer {
-  id: number;
-  tenantId: number;
+  id: string;
+  tenantId: string;
   externalId: string | null;
   email: string | null;
   name: string | null;
@@ -51,11 +79,11 @@ export interface Customer {
 }
 
 export interface Ticket {
-  id: number;
-  tenantId: number;
-  customerId: number | null;
-  inputAppId: number | null;
-  outputAppId: number | null;
+  id: string;
+  tenantId: string;
+  customerId: string | null;
+  inputAppId: string | null;
+  outputAppId: string | null;
   externalId: string;
   state: string;
   subject: string | null;
@@ -71,9 +99,9 @@ export interface Ticket {
 }
 
 export interface Message {
-  id: number;
-  ticketId: number;
-  tenantId: number;
+  id: string;
+  ticketId: string;
+  tenantId: string;
   externalId: string;
   authorRole: string;
   authorId: string | null;
@@ -85,8 +113,9 @@ export interface Message {
 }
 
 export interface KnowledgeArticle {
-  id: number;
-  tenantId: number;
+  id: string;
+  tenantId: string;
+  externalId: string | null;
   title: string;
   content: string;
   category: string | null;
@@ -97,10 +126,20 @@ export interface KnowledgeArticle {
   updatedAt: Date;
 }
 
+export interface KnowledgeChunk {
+  id: string;
+  articleId: string;
+  tenantId: string;
+  chunkIndex: number;
+  content: string;
+  embedding: number[] | null;
+  createdAt: Date;
+}
+
 export interface Draft {
-  id: number;
-  ticketId: number;
-  tenantId: number;
+  id: string;
+  ticketId: string;
+  tenantId: string;
   promptContext: string | null;
   draftResponse: string;
   aiModel: string | null;

@@ -1,8 +1,9 @@
 import { Prisma } from '../generated/prisma/client';
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
 
 export async function findCustomersByTenantId(
-  tenantId: number,
+  tenantId: string,
   opts?: {
     email?: string;
     name?: string;
@@ -31,20 +32,20 @@ export async function findCustomersByTenantId(
   });
 }
 
-export async function findCustomerById(tenantId: number, id: number) {
+export async function findCustomerById(tenantId: string, id: string) {
   return getPrisma().customer.findFirst({
     where: { tenantId, id },
   });
 }
 
-export async function findCustomerByEmail(tenantId: number, email: string) {
+export async function findCustomerByEmail(tenantId: string, email: string) {
   return getPrisma().customer.findUnique({
     where: { tenantId_email: { tenantId, email } },
   });
 }
 
 export async function upsertCustomer(data: {
-  tenantId: number;
+  tenantId: string;
   email: string;
   name?: string;
   phone?: string;
@@ -56,6 +57,7 @@ export async function upsertCustomer(data: {
       tenantId_email: { tenantId: data.tenantId, email: data.email },
     },
     create: {
+      id: generateId(),
       tenantId: data.tenantId,
       email: data.email,
       name: data.name ?? null,
@@ -73,8 +75,8 @@ export async function upsertCustomer(data: {
 }
 
 export async function updateCustomerMetadata(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   metadata: Record<string, unknown>,
 ) {
   return getPrisma().customer.update({
