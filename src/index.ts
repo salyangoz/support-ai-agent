@@ -1,3 +1,6 @@
+import { initSentry, Sentry } from './utils/sentry';
+initSentry();
+
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -20,6 +23,8 @@ export function createApp(): express.Application {
   app.use('/queues', dashboard.getRouter());
 
   app.use(createRouter());
+
+  Sentry.setupExpressErrorHandler(app);
 
   return app;
 }

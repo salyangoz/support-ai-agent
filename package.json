@@ -25,6 +25,7 @@
     "@langchain/textsplitters": "^1.0.1",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
+    "@sentry/node": "^10.48.0",
     "@yengec/ai": "file:packages/yengec-ai",
     "axios": "^1.7.0",
     "bcryptjs": "^3.0.3",

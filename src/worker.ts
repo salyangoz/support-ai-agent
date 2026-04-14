@@ -1,3 +1,6 @@
+import { initSentry, Sentry } from './utils/sentry';
+initSentry();
+
 import { Worker } from 'bullmq';
 import { logger } from './utils/logger';
 import { getRedisConnection, closeRedisConnection } from './queues/connection';
@@ -54,6 +57,10 @@ async function main(): Promise<void> {
           jobId: job?.id,
           error: err.message,
           attempt: job?.attemptsMade,
+        });
+        Sentry.captureException(err, {
+          tags: { queue: w.name, jobName: job?.name },
+          extra: { jobId: job?.id, jobData: job?.data },
         });
       });
     }
