@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import { findUserById, findUserByEmail, updateLastLogin } from '../repositories/user.repository';
+import { findUserById, findUserByEmail, createUser, updateLastLogin } from '../repositories/user.repository';
 import { findTenantUsersByUserId } from '../repositories/tenantUser.repository';
 import { User } from '../models/types';
 
@@ -93,6 +93,26 @@ export async function login(email: string, password: string) {
   }));
 
   return { tokens, user, tenants };
+}
+
+export async function register(data: { email: string; password: string; name: string }) {
+  const existing = await findUserByEmail(data.email);
+  if (existing) {
+    throw Object.assign(new Error('Email is already registered'), {
+      statusCode: 409,
+    });
+  }
+
+  const passwordHash = await hashPassword(data.password);
+  const user = await createUser({
+    email: data.email,
+    passwordHash,
+    name: data.name,
+  });
+
+  const tokens = generateTokens(user as User);
+
+  return { tokens, user };
 }
 
 export async function refreshTokens(refreshToken: string) {

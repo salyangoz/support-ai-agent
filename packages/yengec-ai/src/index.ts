@@ -19,6 +19,8 @@ export interface ChatResponse {
 
 export interface EmbedRequest {
   text: string;
+  service?: string;
+  model?: string;
   credentials?: AiCredentials;
 }
 
@@ -28,7 +30,7 @@ export interface YengecAiOptions {
 }
 
 const DEFAULT_BASE_URL = 'https://ai.yengec.co';
-const DEFAULT_TIMEOUT = 10_000;
+const DEFAULT_TIMEOUT = 60_000;
 
 export class YengecAi {
   private client: AxiosInstance;
@@ -54,21 +56,27 @@ export class YengecAi {
 
     const response = await this.client.post('/chat', payload);
 
+    const result = response.data?.data ?? response.data;
+
     return {
-      text: response.data?.answer || response.data?.text || response.data,
-      tokensUsed: response.data?.tokens_used || null,
+      text: result?.response || result?.answer || result?.text || result,
+      tokensUsed: result?.cost || result?.tokens_used || null,
     };
   }
 
   async embed(request: EmbedRequest): Promise<number[] | null> {
-    const payload: Record<string, unknown> = { text: request.text };
+    const payload: Record<string, unknown> = {
+      text: request.text,
+      service: request.service || 'chat-gpt',
+      model: request.model || 'text-embedding-3-small',
+    };
 
     if (request.credentials) {
       payload.credentials = request.credentials;
     }
 
     const response = await this.client.post('/embed', payload);
-    return response.data?.vector ?? response.data;
+    return response.data?.data?.embedding ?? response.data?.vector ?? response.data;
   }
 }
 

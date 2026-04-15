@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { adminAuth, tenantOrUserAuth, userAuth, requireRole } from '../middleware/auth';
+import { tenantOrUserAuth, userAuth, requireRole } from '../middleware/auth';
 import { webhookAuth } from '../middleware/webhookAuth';
 import { errorHandler } from '../middleware/errorHandler';
 import * as healthController from '../controllers/health.controller';
@@ -12,6 +12,8 @@ import * as draftController from '../controllers/draft.controller';
 import * as webhookController from '../controllers/webhook.controller';
 import * as authController from '../controllers/auth.controller';
 import * as userController from '../controllers/user.controller';
+import * as chatController from '../controllers/chat.controller';
+import * as attachmentController from '../controllers/attachment.controller';
 
 export function createRouter(): Router {
   const router = Router();
@@ -20,6 +22,7 @@ export function createRouter(): Router {
   router.get('/health', healthController.getHealth);
 
   // Auth routes (public)
+  router.post('/auth/register', authController.register);
   router.post('/auth/login', authController.login);
   router.post('/auth/refresh', authController.refresh);
 
@@ -27,13 +30,22 @@ export function createRouter(): Router {
   router.get('/auth/me', userAuth, authController.me);
   router.post('/auth/change-password', userAuth, authController.changePassword);
 
-  // Admin routes
-  router.post('/tenants', adminAuth, tenantController.create);
-  router.get('/tenants/:tenantId', adminAuth, tenantController.show);
-  router.put('/tenants/:tenantId', adminAuth, tenantController.update);
+  // User creates their own tenant (becomes owner)
+  router.post('/my/tenants', userAuth, tenantController.createForUser);
 
-  // Admin bootstrap: create initial owner user for a tenant
-  router.post('/tenants/:tenantId/users/owner', adminAuth, userController.createOwner);
+  // Owner updates their tenant (partial settings merge)
+  router.patch(
+    '/tenants/:tenantId',
+    userAuth, requireRole('owner'),
+    tenantController.updateForOwner,
+  );
+
+  // Tenant detail (owner/admin only)
+  router.get(
+    '/tenants/:tenantId',
+    userAuth, requireRole('owner', 'admin'),
+    tenantController.show,
+  );
 
   // User management routes (user auth + role)
   router.get(
@@ -87,6 +99,11 @@ export function createRouter(): Router {
     '/tenants/:tenantId/apps/:appId',
     tenantOrUserAuth, requireRole('owner', 'admin'),
     appController.remove,
+  );
+  router.post(
+    '/tenants/:tenantId/apps/:appId/sync',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    appController.sync,
   );
   router.post(
     '/tenants/:tenantId/apps/:appId/test',
@@ -164,8 +181,28 @@ export function createRouter(): Router {
     tenantOrUserAuth, requireRole('owner', 'admin'),
     knowledgeBaseController.remove,
   );
+  router.post(
+    '/tenants/:tenantId/knowledge-articles/embed',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    knowledgeBaseController.embedAll,
+  );
+  router.post(
+    '/tenants/:tenantId/knowledge-articles/:id/embed',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    knowledgeBaseController.embed,
+  );
+  router.post(
+    '/tenants/:tenantId/knowledge-articles/generate-from-tickets',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    knowledgeBaseController.generateFromTickets,
+  );
 
   // Draft routes
+  router.get(
+    '/tenants/:tenantId/drafts',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    draftController.listByTenant,
+  );
   router.post(
     '/tenants/:tenantId/tickets/:id/draft',
     tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
@@ -185,6 +222,20 @@ export function createRouter(): Router {
     '/tenants/:tenantId/drafts/:id/send',
     tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
     draftController.send,
+  );
+
+  // Chat routes (KB test)
+  router.post(
+    '/tenants/:tenantId/chat',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    chatController.chat,
+  );
+
+  // Attachment routes
+  router.get(
+    '/tenants/:tenantId/attachments/:attachmentId',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    attachmentController.serve,
   );
 
   // Webhook routes (app ID based)

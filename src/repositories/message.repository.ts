@@ -12,6 +12,13 @@ export async function findMessagesByTicketId(
   return getPrisma().message.findMany({
     where: { ticketId, tenantId },
     orderBy: { externalCreatedAt: 'asc' },
+    include: { attachments: true },
+  });
+}
+
+export async function findMessageByExternalId(ticketId: string, externalId: string) {
+  return getPrisma().message.findUnique({
+    where: { ticketId_externalId: { ticketId, externalId } },
   });
 }
 
@@ -36,7 +43,7 @@ export async function upsertMessage(data: {
   });
 
   if (existing) {
-    return prisma.message.update({
+    const msg = await prisma.message.update({
       where: { id: existing.id },
       data: {
         authorRole: data.authorRole ?? existing.authorRole,
@@ -48,9 +55,11 @@ export async function upsertMessage(data: {
           : existing.externalCreatedAt,
       },
     });
+    await updateTicketLastMessage(data.ticketId, msg);
+    return msg;
   }
 
-  return prisma.message.create({
+  const msg = await prisma.message.create({
     data: {
       id: generateId(),
       ticketId: data.ticketId,
@@ -64,6 +73,32 @@ export async function upsertMessage(data: {
         ? new Date(data.externalCreatedAt) : null,
     },
   });
+  await updateTicketLastMessage(data.ticketId, msg);
+  return msg;
+}
+
+async function updateTicketLastMessage(
+  ticketId: string,
+  message: { authorRole: string; authorName: string | null; createdAt: Date },
+) {
+  const msgTime = message.createdAt;
+
+  const ticket = await getPrisma().ticket.findUnique({
+    where: { id: ticketId },
+    select: { lastMessageAt: true },
+  });
+
+  // Only update if this message is newer
+  if (!ticket?.lastMessageAt || msgTime >= ticket.lastMessageAt) {
+    await getPrisma().ticket.update({
+      where: { id: ticketId },
+      data: {
+        lastMessageAt: msgTime,
+        lastMessageBy: message.authorName,
+        lastMessageRole: message.authorRole,
+      },
+    });
+  }
 }
 
 export async function updateMessageEmbedding(

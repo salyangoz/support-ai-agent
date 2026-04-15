@@ -54,7 +54,7 @@ export async function processSyncKbApp(job: Job): Promise<number> {
   if (!app) return 0;
 
   try {
-    const adapter = createKnowledgeSourceApp(app as any);
+    const adapter = createKnowledgeSourceApp(app as any, tenant.settings as Record<string, any>);
     const articles = await adapter.fetchArticles();
     let synced = 0;
 

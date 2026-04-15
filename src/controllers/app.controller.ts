@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as appService from '../services/app.service';
 import { testAppCredentials } from '../services/appTest.service';
 import { toSnakeCase } from '../utils/serializer';
+import { getQueue, QUEUE_NAMES } from '../queues/queues';
 
 const VALID_TYPES = ['ticket', 'knowledge', 'notification'];
 const VALID_ROLES = ['source', 'destination', 'both'];
@@ -20,7 +21,7 @@ export async function list(
     if (req.query.is_active !== undefined) filters.isActive = req.query.is_active === 'true';
 
     const apps = await appService.getApps(tenantId, filters);
-    res.status(200).json(toSnakeCase(apps));
+    res.status(200).json({ data: toSnakeCase(apps) });
   } catch (err) {
     next(err);
   }
@@ -139,6 +140,60 @@ export async function remove(
     const appId = req.params.appId as string;
     await appService.removeApp(tenantId, appId);
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function sync(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = req.params.tenantId as string;
+    const appId = req.params.appId as string;
+    const app = await appService.getApp(tenantId, appId);
+
+    if (!app) {
+      res.status(404).json({ error: 'App not found' });
+      return;
+    }
+
+    if (app.role === 'destination') {
+      res.status(400).json({ error: 'Destination-only apps cannot be synced' });
+      return;
+    }
+
+    let queueName: string;
+    let jobName: string;
+
+    if (app.type === 'knowledge') {
+      queueName = QUEUE_NAMES.SYNC_KB_APP;
+      jobName = 'sync-kb-app';
+    } else if (app.type === 'ticket') {
+      queueName = QUEUE_NAMES.SYNC_TENANT_APP;
+      jobName = 'sync-tenant-app';
+    } else {
+      res.status(400).json({ error: `App type "${app.type}" does not support sync` });
+      return;
+    }
+
+    const queue = getQueue(queueName);
+    const job = await queue.add(jobName, {
+      tenantId,
+      appId,
+    }, {
+      jobId: `manual-sync-${tenantId}-${appId}-${Date.now()}`,
+      removeOnComplete: 100,
+      removeOnFail: 200,
+    });
+
+    res.status(202).json(toSnakeCase({
+      message: 'Sync job queued',
+      jobId: job.id,
+      queue: queueName,
+    }));
   } catch (err) {
     next(err);
   }

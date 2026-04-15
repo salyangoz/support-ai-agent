@@ -1,6 +1,7 @@
 import { Prisma } from '../generated/prisma/client';
 import { getPrisma } from '../database/prisma';
 import { generateId } from '../utils/uuid';
+import { buildPaginatedResult, PaginatedResult } from '../utils/pagination';
 
 export async function findTicketsByTenantId(
   tenantId: string,
@@ -8,8 +9,9 @@ export async function findTicketsByTenantId(
     inputAppId?: string;
     state?: string;
     customerId?: string;
-    page?: number;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
   const where: Prisma.TicketWhereInput = { tenantId };
@@ -24,15 +26,40 @@ export async function findTicketsByTenantId(
     where.customerId = opts.customerId;
   }
 
-  const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 20;
+  const countWhere = { ...where };
 
-  return getPrisma().ticket.findMany({
+  const include = {
+    customer: { select: { id: true, email: true, name: true } },
+  };
+
+  // Legacy offset pagination
+  if (opts?.page && !opts?.cursor) {
+    const total = await getPrisma().ticket.count({ where: countWhere });
+    const items = await getPrisma().ticket.findMany({
+      where,
+      include,
+      orderBy: { id: 'desc' },
+      skip: (opts.page - 1) * limit,
+      take: limit,
+    });
+    return buildPaginatedResult(items, total, limit);
+  }
+
+  // Cursor pagination
+  if (opts?.cursor) {
+    where.id = { lt: opts.cursor };
+  }
+
+  const total = await getPrisma().ticket.count({ where: countWhere });
+  const items = await getPrisma().ticket.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
-    skip: (page - 1) * limit,
+    include,
+    orderBy: { id: 'desc' },
     take: limit,
   });
+
+  return buildPaginatedResult(items, total, limit);
 }
 
 export async function findTicketById(tenantId: string, id: string) {
@@ -139,6 +166,22 @@ export async function updateTicketAssignee(
     }
     return getPrisma().ticket.findUnique({ where: { id } });
   });
+}
+
+export async function findClosedTicketsWithoutKbArticle(tenantId: string, limit = 50) {
+  return getPrisma().$queryRawUnsafe<{ id: string }[]>(
+    `SELECT t.id FROM tickets t
+     LEFT JOIN knowledge_articles ka
+       ON ka.tenant_id = t.tenant_id
+       AND ka.external_id = 'ticket:' || t.id
+     WHERE t.tenant_id = $1
+       AND t.state = 'closed'
+       AND ka.id IS NULL
+     ORDER BY t.created_at DESC
+     LIMIT $2`,
+    tenantId,
+    limit,
+  );
 }
 
 export async function updateTicketOutputApp(

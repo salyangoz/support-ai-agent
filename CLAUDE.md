@@ -26,6 +26,12 @@ Every new endpoint MUST include:
 4. **Service** — In `src/services/`, business logic only
 5. **Repository** — In `src/repositories/`, database queries only
 
+## When Adding a New App or Config
+
+1. **OpenAPI spec** — Update app code enum, credentials, and config descriptions in `openapi.yaml`
+2. **Factory** — Add case in `src/apps/app.factory.ts`
+3. **TenantSettings** — If adding new settings, update `src/models/types.ts` AND `docs/openapi.yaml` TenantSettings schema
+
 ## When Adding a New Background Job
 
 1. Add queue name to `src/queues/queues.ts` → `QUEUE_NAMES`

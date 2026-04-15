@@ -65,6 +65,7 @@ export function parseIntercomWebhook(
       latestMessageAuthorType: latestPart?.author?.type || 'user',
       latestMessageAuthorId: latestPart?.author?.id ? String(latestPart.author.id) : undefined,
       latestMessageAuthorName: latestPart?.author?.name,
+      latestMessageAttachments: latestPart?.attachments || item.source?.attachments || [],
       createdAt: payload.created_at,
     },
   };

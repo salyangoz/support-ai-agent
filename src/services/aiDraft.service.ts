@@ -6,7 +6,9 @@ import { resolveOutputApps } from '../apps/app.resolver';
 import * as ticketRepo from '../repositories/ticket.repository';
 import * as messageRepo from '../repositories/message.repository';
 import * as chunkRepo from '../repositories/knowledgeChunk.repository';
+import * as articleRepo from '../repositories/knowledgeArticle.repository';
 import * as customerRepo from '../repositories/customer.repository';
+import * as attachmentRepo from '../repositories/messageAttachment.repository';
 import * as draftRepo from '../repositories/draft.repository';
 import { Tenant, TenantSettings } from '../models/types';
 import { logger } from '../utils/logger';
@@ -26,22 +28,38 @@ export async function generateDraft(tenant: Tenant, ticketId: string) {
   }
 
   const messages = await messageRepo.findMessagesByTicketId(ticketId, tenant.id);
+
+  // Skip draft if last message is not from customer
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage && lastMessage.authorRole !== 'customer') {
+    return null;
+  }
+
   const latestCustomerMessage = findLatestCustomerMessage(messages);
   if (!latestCustomerMessage) {
     throw new Error('No customer message found on ticket');
   }
 
-  const embedding = await embed(latestCustomerMessage, tenant.settings.ai_credentials);
+  const embedding = await embed(
+    latestCustomerMessage,
+    tenant.settings.embedding_credentials || tenant.settings.ai_credentials,
+    getSetting(tenant, 'embedding_service', defaults.embeddingService),
+    getSetting(tenant, 'embedding_model', defaults.embeddingModel),
+  );
   const kbArticles = await findRelevantArticles(tenant, embedding);
+  const articleSummaries = await articleRepo.findActiveArticleSummaries(tenant.id);
   const pastReplies = await findPastReplies(tenant, embedding, ticketId);
   const customerContext = await buildCustomerContext(tenant.id, ticket.customerId);
   const conversationContext = buildConversationContext(messages);
+  const textAttachments = await attachmentRepo.findTextAttachmentsByTicketId(ticketId, tenant.id);
 
   const promptContext = assemblePromptContext(
     customerContext,
+    articleSummaries,
     kbArticles,
     pastReplies,
     conversationContext,
+    textAttachments,
   );
 
   const aiResponse = await callAi(tenant, promptContext, latestCustomerMessage);
@@ -102,7 +120,7 @@ async function buildCustomerContext(tenantId: string, customerId: string | null)
     customerId,
     limit: 100,
   });
-  const ticketCount = previousTickets.length;
+  const ticketCount = previousTickets.data.length;
 
   return { customer, ticketCount };
 }
@@ -116,9 +134,11 @@ function buildConversationContext(messages: any[]): string {
 
 function assemblePromptContext(
   customerCtx: { customer: any; ticketCount: number } | null,
+  articleSummaries: { id: string; title: string; category: string | null }[],
   kbArticles: any[],
   pastReplies: any[],
   conversationContext: string,
+  textAttachments?: { fileName: string; fileType: string | null; contentText: string | null }[],
 ): string {
   const sections: string[] = [];
 
@@ -132,11 +152,18 @@ function assemblePromptContext(
     );
   }
 
+  if (articleSummaries.length > 0) {
+    const list = articleSummaries
+      .map((a) => `- [${a.category || 'general'}] ${a.title}`)
+      .join('\n');
+    sections.push(`## Knowledge Base Overview (${articleSummaries.length} articles)\n${list}`);
+  }
+
   if (kbArticles.length > 0) {
     const chunkTexts = kbArticles
       .map((c: any) => c.content)
       .join('\n\n---\n\n');
-    sections.push(`## Knowledge Base Context\n${chunkTexts}`);
+    sections.push(`## Relevant Knowledge Base Details\n${chunkTexts}`);
   }
 
   if (pastReplies.length > 0) {
@@ -144,6 +171,16 @@ function assemblePromptContext(
       .map((r: any) => `Q: ${r.initial_body || '(no question)'}\nA: ${r.body}`)
       .join('\n\n');
     sections.push(`## Similar Past Replies\n${replyTexts}`);
+  }
+
+  if (textAttachments && textAttachments.length > 0) {
+    const attachmentTexts = textAttachments
+      .filter((a) => a.contentText)
+      .map((a) => `- [${a.fileName}]: ${a.contentText}`)
+      .join('\n');
+    if (attachmentTexts) {
+      sections.push(`## Attachments\n${attachmentTexts}`);
+    }
   }
 
   sections.push(`## Current Conversation\n${conversationContext}`);

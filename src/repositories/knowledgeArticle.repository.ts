@@ -1,6 +1,7 @@
 import { Prisma } from '../generated/prisma/client';
 import { getPrisma } from '../database/prisma';
 import { generateId } from '../utils/uuid';
+import { buildPaginatedResult } from '../utils/pagination';
 
 function formatEmbedding(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
@@ -12,8 +13,9 @@ export async function findArticlesByTenantId(
     category?: string;
     search?: string;
     isActive?: boolean;
-    page?: number;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
   const where: Prisma.KnowledgeArticleWhereInput = { tenantId };
@@ -33,13 +35,39 @@ export async function findArticlesByTenantId(
     where.isActive = opts.isActive;
   }
 
-  const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 20;
+  const countWhere = { ...where };
 
-  return getPrisma().knowledgeArticle.findMany({
+  if (opts?.page && !opts?.cursor) {
+    const total = await getPrisma().knowledgeArticle.count({ where: countWhere });
+    const items = await getPrisma().knowledgeArticle.findMany({
+      where,
+      orderBy: { id: 'desc' },
+      skip: (opts.page - 1) * limit,
+      take: limit,
+    });
+    return buildPaginatedResult(items, total, limit);
+  }
+
+  if (opts?.cursor) {
+    where.id = { lt: opts.cursor };
+  }
+
+  const total = await getPrisma().knowledgeArticle.count({ where: countWhere });
+  const items = await getPrisma().knowledgeArticle.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
-    skip: (page - 1) * limit,
+    orderBy: { id: 'desc' },
+    take: limit,
+  });
+
+  return buildPaginatedResult(items, total, limit);
+}
+
+export async function findActiveArticleSummaries(tenantId: string, limit = 100) {
+  return getPrisma().knowledgeArticle.findMany({
+    where: { tenantId, isActive: true },
+    select: { id: true, title: true, category: true },
+    orderBy: { title: 'asc' },
     take: limit,
   });
 }

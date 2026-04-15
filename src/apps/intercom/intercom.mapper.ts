@@ -1,5 +1,5 @@
-import { NormalizedTicket, NormalizedMessage } from '../app.interface';
-import { IntercomConversation, IntercomConversationPart } from './intercom.types';
+import { NormalizedTicket, NormalizedMessage, NormalizedAttachment } from '../app.interface';
+import { IntercomConversation, IntercomConversationPart, IntercomAttachment } from './intercom.types';
 import { htmlToText } from '../../utils/htmlToText';
 
 export function mapConversationToTicket(conversation: IntercomConversation): NormalizedTicket {
@@ -16,8 +16,12 @@ export function mapConversationToTicket(conversation: IntercomConversation): Nor
       : undefined,
   };
 
+  // Prefer title, fall back to first line of source body
   if (conversation.title) {
     ticket.subject = conversation.title;
+  } else if (conversation.source?.body) {
+    const body = htmlToText(conversation.source.body);
+    ticket.subject = body.length > 100 ? body.substring(0, 100) + '...' : body;
   }
 
   if (conversation.source?.body) {
@@ -49,17 +53,30 @@ function mapAuthorRole(type: string): NormalizedMessage['authorRole'] {
   }
 }
 
+function mapAttachments(attachments?: IntercomAttachment[]): NormalizedAttachment[] | undefined {
+  if (!attachments || attachments.length === 0) return undefined;
+
+  return attachments.map((a) => ({
+    externalId: a.id ? String(a.id) : undefined,
+    fileName: a.name || 'attachment',
+    fileType: a.content_type,
+    fileSize: a.filesize,
+    url: a.url,
+  }));
+}
+
 export function mapConversationPartsToMessages(
   parts: IntercomConversationPart[],
 ): NormalizedMessage[] {
   return parts
-    .filter(part => part.body)
+    .filter(part => part.body || (part.attachments && part.attachments.length > 0))
     .map(part => ({
       externalId: String(part.id),
       authorRole: mapAuthorRole(part.author?.type),
       authorId: part.author?.id ? String(part.author.id) : undefined,
       authorName: part.author?.name,
-      body: htmlToText(part.body),
+      body: part.body ? htmlToText(part.body) : '',
+      attachments: mapAttachments(part.attachments),
       externalCreatedAt: part.created_at
         ? new Date(part.created_at * 1000)
         : undefined,
@@ -80,6 +97,7 @@ export function mapInitialMessageToNormalized(
     authorId: source.author?.id ? String(source.author.id) : undefined,
     authorName: (source.author as any)?.name,
     body: htmlToText(source.body),
+    attachments: mapAttachments((source as any).attachments),
     externalCreatedAt: conversation.created_at
       ? new Date(conversation.created_at * 1000)
       : undefined,

@@ -14,7 +14,7 @@ tags:
   - name: Auth
     description: Authentication & user session
   - name: Tenants
-    description: Tenant management (admin only)
+    description: Tenant management
   - name: Users
     description: User & membership management
   - name: Apps
@@ -27,6 +27,8 @@ tags:
     description: Knowledge base for RAG
   - name: Drafts
     description: AI-generated draft responses
+  - name: Chat
+    description: Internal KB test chat
   - name: Webhooks
     description: Inbound webhooks from providers
   - name: Health
@@ -34,11 +36,6 @@ tags:
 
 components:
   securitySchemes:
-    AdminApiKey:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: System admin API key
     TenantApiKey:
       type: apiKey
       in: header
@@ -58,6 +55,22 @@ components:
           type: string
       required: [error]
 
+    CursorPagination:
+      type: object
+      properties:
+        next_cursor:
+          type: string
+          format: uuid
+          nullable: true
+          description: Cursor for the next page. null when there are no more results.
+        has_more:
+          type: boolean
+          description: Whether there are more results after this page.
+        total:
+          type: integer
+          description: Total number of records matching the current filters.
+      required: [next_cursor, has_more, total]
+
     TenantSettings:
       type: object
       properties:
@@ -67,16 +80,31 @@ components:
           type: string
         rag_top_k:
           type: integer
-        embedding_dimension:
-          type: integer
         ai_service:
           type: string
-          example: openai
+          example: deepseek
+          description: AI service for chat/draft generation
         ai_model:
           type: string
-          example: gpt-4
+          example: deepseek-chat
+          description: AI model for chat/draft generation
         ai_credentials:
           type: object
+          description: API credentials for chat/draft AI service
+          properties:
+            api_key:
+              type: string
+        embedding_service:
+          type: string
+          example: chat-gpt
+          description: AI service for embeddings (defaults to chat-gpt)
+        embedding_model:
+          type: string
+          example: text-embedding-3-small
+          description: Model for embeddings (defaults to text-embedding-3-small)
+        embedding_credentials:
+          type: object
+          description: API credentials for embedding service (falls back to ai_credentials if not set)
           properties:
             api_key:
               type: string
@@ -94,6 +122,9 @@ components:
           items:
             type: string
             format: uuid
+        auto_generate_kb:
+          type: boolean
+          description: Automatically generate KB articles from closed tickets
 
     Tenant:
       type: object
@@ -226,6 +257,9 @@ components:
           nullable: true
         metadata:
           type: object
+        ticket_count:
+          type: integer
+          description: Number of tickets for this customer
         created_at:
           type: string
           format: date-time
@@ -270,6 +304,28 @@ components:
         assignee_id:
           type: string
           nullable: true
+        last_message_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_message_by:
+          type: string
+          nullable: true
+        last_message_role:
+          type: string
+          nullable: true
+          enum: [customer, agent, bot, system]
+        customer:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+            name:
+              type: string
         created_at:
           type: string
           format: date-time
@@ -299,6 +355,27 @@ components:
         body:
           type: string
           nullable: true
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              file_name:
+                type: string
+              file_type:
+                type: string
+                nullable: true
+              file_size:
+                type: integer
+                nullable: true
+              url:
+                type: string
+              local_path:
+                type: string
+                nullable: true
         created_at:
           type: string
           format: date-time
@@ -330,6 +407,13 @@ components:
         updated_at:
           type: string
           format: date-time
+        embedding_status:
+          type: object
+          properties:
+            total_chunks:
+              type: integer
+            embedded_chunks:
+              type: integer
 
     Draft:
       type: object
@@ -376,6 +460,22 @@ components:
       schema:
         type: string
         format: uuid
+    cursor:
+      name: cursor
+      in: query
+      description: Cursor from previous page's next_cursor value
+      schema:
+        type: string
+        format: uuid
+    paginationLimit:
+      name: limit
+      in: query
+      description: Maximum number of items per page (default 20, max 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
 
 paths:
   # ── Health ──
@@ -399,6 +499,53 @@ paths:
                     format: date-time
 
   # ── Auth ──
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /auth/login:
     post:
       tags: [Auth]
@@ -537,13 +684,14 @@ paths:
         '401':
           description: Wrong current password
 
-  # ── Tenants ──
-  /tenants:
+  # ── User Tenants ──
+  /my/tenants:
     post:
       tags: [Tenants]
-      summary: Create a tenant
+      summary: Create a tenant for the authenticated user
+      description: Creates a new tenant and assigns the authenticated user as owner.
       security:
-        - AdminApiKey: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -556,40 +704,62 @@ paths:
                   type: string
                 slug:
                   type: string
-                settings:
-                  $ref: '#/components/schemas/TenantSettings'
       responses:
         '201':
-          description: Tenant created
+          description: Tenant created, user assigned as owner
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tenant'
+                allOf:
+                  - $ref: '#/components/schemas/Tenant'
+                  - type: object
+                    properties:
+                      tenant_user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                          tenant_id:
+                            type: string
+                            format: uuid
+                          user_id:
+                            type: string
+                            format: uuid
+                          role:
+                            type: string
+                            enum: [owner]
+                          is_active:
+                            type: boolean
+                          created_at:
+                            type: string
+                            format: date-time
+                          updated_at:
+                            type: string
+                            format: date-time
         '400':
-          description: Validation error
-
-  /tenants/{tenantId}:
-    get:
-      tags: [Tenants]
-      summary: Get tenant details
-      security:
-        - AdminApiKey: []
-      parameters:
-        - $ref: '#/components/parameters/tenantId'
-      responses:
-        '200':
-          description: Tenant details
+          description: Missing required fields
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tenant'
-        '404':
-          description: Not found
-    put:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+        '409':
+          description: Slug is already taken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Tenants ──
+  /tenants/{tenantId}:
+    patch:
       tags: [Tenants]
-      summary: Update tenant
+      summary: Update tenant (owner)
+      description: Partial update for tenant owners. Settings are merged (not replaced).
       security:
-        - AdminApiKey: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/tenantId'
       requestBody:
@@ -609,38 +779,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Tenant'
+        '400':
+          description: No fields to update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Tenant not found
 
-  # ── Users ──
-  /tenants/{tenantId}/users/owner:
-    post:
-      tags: [Users]
-      summary: Bootstrap initial owner user (admin only)
+  /tenants/{tenantId}:
+    get:
+      tags: [Tenants]
+      summary: Get tenant details
       security:
-        - AdminApiKey: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/tenantId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email, password, name]
-              properties:
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
-                  minLength: 8
-                name:
-                  type: string
       responses:
-        '201':
-          description: Owner created
-        '400':
-          description: Tenant already has an owner
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          description: Not found
 
+  # ── Users ──
   /tenants/{tenantId}/users:
     get:
       tags: [Users]
@@ -652,6 +818,15 @@ paths:
       responses:
         '200':
           description: List of members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
     post:
       tags: [Users]
       summary: Invite user to tenant
@@ -782,9 +957,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/App'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/App'
     post:
       tags: [Apps]
       summary: Create app
@@ -803,7 +981,13 @@ paths:
               properties:
                 code:
                   type: string
-                  example: intercom
+                  description: |
+                    App code. Available codes:
+                    - `intercom` (type: ticket, role: both) — Intercom conversations
+                    - `github` (type: knowledge, role: source) — GitHub repo markdown files
+                    - `web-scraper` (type: knowledge, role: source) — Web page crawler
+                    - `slack-kb` (type: knowledge, role: source) — Slack channel threads
+                  enum: [intercom, github, web-scraper, slack-kb]
                 type:
                   type: string
                   enum: [ticket, knowledge, notification]
@@ -814,10 +998,21 @@ paths:
                   type: string
                 credentials:
                   type: object
+                  description: |
+                    Auth credentials per app code:
+                    - intercom: `{ accessToken, clientSecret }`
+                    - github: `{ token, owner, repo, path?, branch? }`
+                    - web-scraper: `{}`
+                    - slack-kb: `{ botToken, ai_credentials?: { api_key } }`
                 webhook_secret:
                   type: string
                 config:
                   type: object
+                  description: |
+                    App-specific config per code:
+                    - intercom: `{ send_as_note?: boolean }` — when true, draft replies are added as internal notes instead of customer-visible comments
+                    - web-scraper: `{ url, selector?, max_pages? }`
+                    - slack-kb: `{ channel_ids, min_replies?, lookback_days?, ai_service?, ai_model? }`
       responses:
         '201':
           description: App created
@@ -902,6 +1097,45 @@ paths:
         '204':
           description: Deleted
 
+  /tenants/{tenantId}/apps/{appId}/sync:
+    post:
+      tags: [Apps]
+      summary: Trigger app sync
+      description: Manually trigger a sync job for the app. The job is queued and processed asynchronously by the worker.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Sync job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  job_id:
+                    type: string
+                  queue:
+                    type: string
+        '400':
+          description: App type does not support sync or is destination-only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: App not found
+
   # ── Tickets ──
   /tenants/{tenantId}/tickets:
     get:
@@ -912,6 +1146,8 @@ paths:
         - TenantApiKey: []
       parameters:
         - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/paginationLimit'
         - name: input_app_id
           in: query
           schema:
@@ -928,10 +1164,7 @@ paths:
             format: uuid
         - name: page
           in: query
-          schema:
-            type: integer
-        - name: limit
-          in: query
+          deprecated: true
           schema:
             type: integer
       responses:
@@ -946,6 +1179,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Ticket'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
 
   /tenants/{tenantId}/tickets/{id}:
     get:
@@ -1041,6 +1276,8 @@ paths:
         - TenantApiKey: []
       parameters:
         - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/paginationLimit'
         - name: email
           in: query
           schema:
@@ -1051,10 +1288,7 @@ paths:
             type: string
         - name: page
           in: query
-          schema:
-            type: integer
-        - name: limit
-          in: query
+          deprecated: true
           schema:
             type: integer
       responses:
@@ -1069,6 +1303,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Customer'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
     post:
       tags: [Customers]
       summary: Create or upsert customer
@@ -1166,6 +1402,8 @@ paths:
         - TenantApiKey: []
       parameters:
         - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/paginationLimit'
         - name: category
           in: query
           schema:
@@ -1180,10 +1418,7 @@ paths:
             type: boolean
         - name: page
           in: query
-          schema:
-            type: integer
-        - name: limit
-          in: query
+          deprecated: true
           schema:
             type: integer
       responses:
@@ -1198,6 +1433,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/KnowledgeArticle'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
     post:
       tags: [Knowledge Articles]
       summary: Create knowledge article
@@ -1301,7 +1538,133 @@ paths:
         '204':
           description: Deleted
 
+  /tenants/{tenantId}/knowledge-articles/embed:
+    post:
+      tags: [Knowledge Articles]
+      summary: Trigger embedding for all articles
+      description: Manually trigger embedding generation for all knowledge base chunks that don't have embeddings yet.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '202':
+          description: Embedding jobs queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enqueued:
+                    type: integer
+                    description: Number of embedding jobs added to the queue
+                  message:
+                    type: string
+
+  /tenants/{tenantId}/knowledge-articles/{id}/embed:
+    post:
+      tags: [Knowledge Articles]
+      summary: Trigger embedding for a single article
+      description: Manually trigger embedding generation for chunks of a specific article.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Embedding results for the article
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  article_id:
+                    type: string
+                    format: uuid
+                  processed:
+                    type: integer
+                  failed:
+                    type: integer
+                  embedding_status:
+                    type: object
+                    properties:
+                      total_chunks:
+                        type: integer
+                      embedded_chunks:
+                        type: integer
+        '404':
+          description: Article not found
+
+  /tenants/{tenantId}/knowledge-articles/generate-from-tickets:
+    post:
+      tags: [Knowledge Articles]
+      summary: Generate KB articles from closed tickets
+      description: Summarizes closed tickets that don't have KB articles yet using AI, and creates knowledge base articles from them.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '202':
+          description: KB generation jobs queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enqueued:
+                    type: integer
+                    description: Number of KB generation jobs added to the queue
+                  message:
+                    type: string
+
   # ── Drafts ──
+  /tenants/{tenantId}/drafts:
+    get:
+      tags: [Drafts]
+      summary: List all drafts for a tenant
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/paginationLimit'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, sent]
+        - name: offset
+          in: query
+          deprecated: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: List of drafts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Draft'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+
   /tenants/{tenantId}/tickets/{id}/draft:
     post:
       tags: [Drafts]
@@ -1340,15 +1703,22 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/paginationLimit'
       responses:
         '200':
           description: List of drafts
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Draft'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Draft'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
 
   /tenants/{tenantId}/drafts/{id}:
     patch:
@@ -1406,6 +1776,101 @@ paths:
           description: Draft sent
         '400':
           description: Draft must be approved first
+
+  # ── Chat ──
+  /tenants/{tenantId}/chat:
+    post:
+      tags: [Chat]
+      summary: Test knowledge base with a question
+      description: Send a question and get an AI-generated answer using the tenant's knowledge base. Returns the answer and the KB sources used.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  description: The question to ask
+                history:
+                  type: array
+                  description: Previous conversation messages for multi-turn chat
+                  items:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role:
+                        type: string
+                        enum: [user, assistant]
+                      content:
+                        type: string
+      responses:
+        '200':
+          description: AI-generated answer with KB sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer:
+                    type: string
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chunk_id:
+                          type: string
+                          format: uuid
+                        article_id:
+                          type: string
+                          format: uuid
+                        content:
+                          type: string
+                  tokens_used:
+                    type: integer
+                    nullable: true
+        '400':
+          description: Missing question
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Attachments ──
+  /tenants/{tenantId}/attachments/{attachmentId}:
+    get:
+      tags: [Tickets]
+      summary: Serve attachment file
+      description: Returns the attachment file. Files are stored locally after download from the source system.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Attachment file
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Attachment not found
 
   # ── Webhooks ──
   /webhooks/{tenantSlug}/{appId}:

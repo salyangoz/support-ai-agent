@@ -29,9 +29,9 @@ export async function createChunks(
 
 export async function findChunksWithoutEmbedding(tenantId: string) {
   return getPrisma().$queryRawUnsafe<
-    { id: string; content: string }[]
+    { id: string; article_id: string; content: string }[]
   >(
-    `SELECT id, content
+    `SELECT id, article_id, content
      FROM knowledge_chunks
      WHERE tenant_id = $1 AND embedding IS NULL`,
     tenantId,
@@ -45,6 +45,31 @@ export async function updateChunkEmbedding(id: string, embedding: number[]) {
     formatEmbedding(embedding),
     id,
   );
+}
+
+export async function getEmbeddingStatusByArticleIds(articleIds: string[]) {
+  if (articleIds.length === 0) return {};
+
+  const rows = await getPrisma().$queryRawUnsafe<
+    { article_id: string; total: bigint; embedded: bigint }[]
+  >(
+    `SELECT article_id,
+            COUNT(*) AS total,
+            COUNT(embedding) AS embedded
+     FROM knowledge_chunks
+     WHERE article_id = ANY($1::uuid[])
+     GROUP BY article_id`,
+    articleIds,
+  );
+
+  const status: Record<string, { totalChunks: number; embeddedChunks: number }> = {};
+  for (const row of rows) {
+    status[row.article_id] = {
+      totalChunks: Number(row.total),
+      embeddedChunks: Number(row.embedded),
+    };
+  }
+  return status;
 }
 
 export async function findSimilarChunks(

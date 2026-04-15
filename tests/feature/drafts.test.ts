@@ -25,7 +25,7 @@ describe('Feature: Drafts', () => {
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(0);
+      expect(res.body.data).toHaveLength(0);
     });
 
     it('should return drafts after fixture insert', async () => {
@@ -39,7 +39,90 @@ describe('Feature: Drafts', () => {
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(2);
+      expect(res.body.data).toHaveLength(2);
+    });
+  });
+
+  describe('GET /tenants/:tenantId/drafts', () => {
+    it('should return empty list initially', async () => {
+      const tenant = await createTenant();
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/drafts`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+    });
+
+    it('should return all drafts across tickets', async () => {
+      const tenant = await createTenant();
+      const ticket1 = await createTicket(tenant.id);
+      const ticket2 = await createTicket(tenant.id);
+      await createDraft(ticket1.id, tenant.id, { draft_response: 'D1' });
+      await createDraft(ticket2.id, tenant.id, { draft_response: 'D2' });
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/drafts`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+    });
+
+    it('should filter by status', async () => {
+      const tenant = await createTenant();
+      const ticket = await createTicket(tenant.id);
+      await createDraft(ticket.id, tenant.id, { status: 'pending' });
+      await createDraft(ticket.id, tenant.id, { status: 'approved' });
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/drafts?status=pending`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].status).toBe('pending');
+    });
+
+    it('should return pagination metadata and support cursor', async () => {
+      const tenant = await createTenant();
+      const ticket = await createTicket(tenant.id);
+      await createDraft(ticket.id, tenant.id, { draft_response: 'D1' });
+      await createDraft(ticket.id, tenant.id, { draft_response: 'D2' });
+      await createDraft(ticket.id, tenant.id, { draft_response: 'D3' });
+
+      const page1 = await request
+        .get(`/tenants/${tenant.id}/drafts?limit=2`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(page1.status).toBe(200);
+      expect(page1.body.data).toHaveLength(2);
+      expect(page1.body.pagination.has_more).toBe(true);
+      expect(page1.body.pagination.total).toBe(3);
+      expect(page1.body.pagination.next_cursor).toBeDefined();
+
+      const page2 = await request
+        .get(`/tenants/${tenant.id}/drafts?limit=2&cursor=${page1.body.pagination.next_cursor}`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(page2.body.data).toHaveLength(1);
+      expect(page2.body.pagination.has_more).toBe(false);
+      expect(page2.body.pagination.total).toBe(3);
+    });
+
+    it('should return correct total with status filter', async () => {
+      const tenant = await createTenant();
+      const ticket = await createTicket(tenant.id);
+      await createDraft(ticket.id, tenant.id, { status: 'pending' });
+      await createDraft(ticket.id, tenant.id, { status: 'pending' });
+      await createDraft(ticket.id, tenant.id, { status: 'approved' });
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/drafts?status=pending`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.body.pagination.total).toBe(2);
     });
   });
 

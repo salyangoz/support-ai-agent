@@ -36,9 +36,13 @@ export interface TenantSettings {
   auto_send_drafts?: boolean;
   default_language?: string;
   rag_top_k?: number;
-  embedding_dimension?: number;
   ai_service?: string;
   ai_model?: string;
+  embedding_service?: string;
+  embedding_model?: string;
+  embedding_credentials?: {
+    api_key?: string;
+  };
   ai_credentials?: {
     api_key?: string;
   };
@@ -47,6 +51,7 @@ export interface TenantSettings {
   max_context_tokens?: number;
   sync_lookback_minutes?: number;
   output_app_ids?: string[];
+  auto_generate_kb?: boolean;
 }
 
 export interface App {

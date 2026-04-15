@@ -13,6 +13,7 @@ export const QUEUE_NAMES = {
   EMBED_CHUNK: 'embed-chunk',
   SCAN_KB_SYNC: 'scan-kb-sync',
   SYNC_KB_APP: 'sync-kb-app',
+  GENERATE_KB_FROM_TICKET: 'generate-kb-from-ticket',
 } as const;
 
 let queues: Map<string, Queue> | null = null;

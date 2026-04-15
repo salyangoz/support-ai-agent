@@ -7,8 +7,9 @@ export async function getTickets(
     inputAppId?: string;
     state?: string;
     customerId?: string;
-    page?: number;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
   return ticketRepo.findTicketsByTenantId(tenantId, opts);

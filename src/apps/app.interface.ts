@@ -14,12 +14,21 @@ export interface NormalizedTicket {
   externalUpdatedAt?: Date;
 }
 
+export interface NormalizedAttachment {
+  externalId?: string;
+  fileName: string;
+  fileType?: string;
+  fileSize?: number;
+  url: string;
+}
+
 export interface NormalizedMessage {
   externalId: string;
   authorRole: 'customer' | 'agent' | 'bot' | 'system';
   authorId?: string;
   authorName?: string;
   body: string;
+  attachments?: NormalizedAttachment[];
   externalCreatedAt?: Date;
 }
 

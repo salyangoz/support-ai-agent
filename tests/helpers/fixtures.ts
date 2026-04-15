@@ -224,7 +224,7 @@ export async function createDraft(
     tenantId,
     promptContext: overrides.prompt_context ?? 'Test context',
     draftResponse: overrides.draft_response ?? 'Test draft response',
-    aiModel: overrides.ai_model ?? 'deepseek-chat',
+    aiModel: overrides.ai_model ?? 'chat-gpt',
     aiTokensUsed: overrides.ai_tokens_used ?? 100,
     status: overrides.status ?? 'pending',
   };

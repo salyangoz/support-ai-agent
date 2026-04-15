@@ -27,7 +27,7 @@ export async function list(
   try {
     const tenantId = req.params.tenantId as string;
     const members = await userService.listTenantMembers(tenantId);
-    res.status(200).json(toSnakeCase(stripPassword(members)));
+    res.status(200).json({ data: toSnakeCase(stripPassword(members)) });
   } catch (err) {
     next(err);
   }
@@ -155,34 +155,3 @@ export async function remove(
   }
 }
 
-export async function createOwner(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId as string;
-    const { email, password, name } = req.body;
-
-    if (!email || !password || !name) {
-      res.status(400).json({ error: 'email, password, and name are required' });
-      return;
-    }
-
-    if (password.length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters' });
-      return;
-    }
-
-    const result = await userService.inviteUser(tenantId, {
-      email,
-      password,
-      name,
-      role: 'owner',
-    });
-
-    res.status(201).json(toSnakeCase(stripPassword(result)));
-  } catch (err) {
-    next(err);
-  }
-}

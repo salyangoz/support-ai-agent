@@ -3,6 +3,7 @@ import { getQueue, QUEUE_NAMES } from '../queues';
 import * as tenantRepo from '../../repositories/tenant.repository';
 import * as messageRepo from '../../repositories/message.repository';
 import { embed } from '../../services/embedding.service';
+import { defaults } from '../../config';
 import { logger } from '../../utils/logger';
 
 /**
@@ -16,7 +17,8 @@ export async function scanMessageEmbeddings(job: Job): Promise<number> {
 
   for (const tenant of tenants) {
     const messages = await messageRepo.findMessagesWithoutEmbedding(tenant.id);
-    const creds = (tenant.settings as any)?.ai_credentials;
+    const settings = tenant.settings as any;
+    const creds = settings?.embedding_credentials || settings?.ai_credentials;
 
     for (const msg of messages) {
       if (!msg.body) continue;
@@ -25,6 +27,8 @@ export async function scanMessageEmbeddings(job: Job): Promise<number> {
         messageId: msg.id,
         body: msg.body,
         credentials: creds,
+        embeddingService: settings?.embedding_service || defaults.embeddingService,
+        embeddingModel: settings?.embedding_model || defaults.embeddingModel,
       }, {
         jobId: `embed-msg-${msg.id}`,
         removeOnComplete: 100,
@@ -41,9 +45,9 @@ export async function scanMessageEmbeddings(job: Job): Promise<number> {
  * Worker: embeds one message.
  */
 export async function processEmbedMessage(job: Job): Promise<void> {
-  const { messageId, body, credentials } = job.data;
+  const { messageId, body, credentials, embeddingService, embeddingModel } = job.data;
 
-  const embedding = await embed(body, credentials);
+  const embedding = await embed(body, credentials, embeddingService, embeddingModel);
   if (embedding) {
     await messageRepo.updateMessageEmbedding(messageId, embedding);
   }

@@ -4,6 +4,7 @@ import * as ticketSyncService from '../services/ticketSync.service';
 import * as appService from '../services/app.service';
 import * as ticketRepo from '../repositories/ticket.repository';
 import { toSnakeCase } from '../utils/serializer';
+import { parsePaginationQuery } from '../utils/pagination';
 import { logger } from '../utils/logger';
 
 export async function list(
@@ -13,17 +14,19 @@ export async function list(
 ): Promise<void> {
   try {
     const tenantId = req.params.tenantId as string;
-    const { input_app_id, state, customer_id, page, limit } = req.query;
+    const { input_app_id, state, customer_id, page } = req.query;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
 
-    const tickets = await ticketService.getTickets(tenantId, {
+    const result = await ticketService.getTickets(tenantId, {
       inputAppId: input_app_id as string | undefined,
       state: state as string | undefined,
       customerId: customer_id as string | undefined,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
+      cursor: pagination.cursor,
+      limit: pagination.limit,
+      page: !pagination.cursor && page ? Number(page) : undefined,
     });
 
-    res.status(200).json({ data: toSnakeCase(tickets) });
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }

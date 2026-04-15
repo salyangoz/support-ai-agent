@@ -2,6 +2,7 @@ import * as articleRepo from '../repositories/knowledgeArticle.repository';
 import * as chunkRepo from '../repositories/knowledgeChunk.repository';
 import * as tenantRepo from '../repositories/tenant.repository';
 import { chunkText } from './chunking.service';
+import { embed } from './embedding.service';
 import { logger } from '../utils/logger';
 
 export async function getArticles(
@@ -10,19 +11,44 @@ export async function getArticles(
     category?: string;
     search?: string;
     isActive?: boolean;
-    page?: number;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
-  return articleRepo.findArticlesByTenantId(tenantId, opts);
+  const result = await articleRepo.findArticlesByTenantId(tenantId, opts);
+  const articleIds = result.data.map((a: any) => a.id);
+  const embeddingStatus = await chunkRepo.getEmbeddingStatusByArticleIds(articleIds);
+
+  const enriched = result.data.map((article: any) => {
+    const status = embeddingStatus[article.id];
+    return {
+      ...article,
+      embeddingStatus: status
+        ? { totalChunks: status.totalChunks, embeddedChunks: status.embeddedChunks }
+        : { totalChunks: 0, embeddedChunks: 0 },
+    };
+  });
+
+  return { ...result, data: enriched };
 }
 
 export async function getArticle(tenantId: string, id: string) {
-  return articleRepo.findArticleById(tenantId, id);
+  return getArticleById(tenantId, id);
 }
 
 export async function getArticleById(tenantId: string, id: string) {
-  return articleRepo.findArticleById(tenantId, id);
+  const article = await articleRepo.findArticleById(tenantId, id);
+  if (!article) return null;
+
+  const status = await chunkRepo.getEmbeddingStatusByArticleIds([article.id]);
+  const s = status[article.id];
+  return {
+    ...article,
+    embeddingStatus: s
+      ? { totalChunks: s.totalChunks, embeddedChunks: s.embeddedChunks }
+      : { totalChunks: 0, embeddedChunks: 0 },
+  };
 }
 
 export async function createArticle(data: {
@@ -97,6 +123,62 @@ export async function findSimilarChunks(
   limit: number,
 ) {
   return chunkRepo.findSimilarChunks(tenantId, embedding, limit);
+}
+
+export async function embedArticle(
+  tenantId: string,
+  articleId: string,
+  opts?: { credentials?: { api_key?: string }; service?: string; model?: string },
+) {
+  const article = await articleRepo.findArticleById(tenantId, articleId);
+  if (!article) return null;
+
+  const chunks = await chunkRepo.findChunksWithoutEmbedding(tenantId);
+  const articleChunks = chunks.filter((c: any) => c.article_id === articleId || c.articleId === articleId);
+
+  let embedded = 0;
+  let failed = 0;
+
+  for (const chunk of articleChunks) {
+    const embedding = await embed(chunk.content, opts?.credentials, opts?.service, opts?.model);
+    if (embedding) {
+      await chunkRepo.updateChunkEmbedding(chunk.id, embedding);
+      embedded++;
+    } else {
+      failed++;
+    }
+  }
+
+  const status = await chunkRepo.getEmbeddingStatusByArticleIds([articleId]);
+  const s = status[articleId];
+
+  return {
+    articleId,
+    processed: embedded,
+    failed,
+    embeddingStatus: s
+      ? { totalChunks: s.totalChunks, embeddedChunks: s.embeddedChunks }
+      : { totalChunks: 0, embeddedChunks: 0 },
+  };
+}
+
+export async function embedAllArticles(tenantId: string, credentials?: { api_key?: string }) {
+  const chunks = await chunkRepo.findChunksWithoutEmbedding(tenantId);
+
+  let embedded = 0;
+  let failed = 0;
+
+  for (const chunk of chunks) {
+    const embedding = await embed(chunk.content, credentials);
+    if (embedding) {
+      await chunkRepo.updateChunkEmbedding(chunk.id, embedding);
+      embedded++;
+    } else {
+      failed++;
+    }
+  }
+
+  return { processed: embedded, failed, pending: 0 };
 }
 
 async function rechunkArticle(articleId: string, tenantId: string, text: string) {

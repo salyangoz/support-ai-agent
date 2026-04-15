@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { config } from '../config';
 import { findTenantByApiKey, findTenantById } from '../repositories/tenant.repository';
 import { findUserById } from '../repositories/user.repository';
 import { findTenantUser } from '../repositories/tenantUser.repository';
@@ -14,21 +13,6 @@ declare global {
       tenantUser?: TenantUser;
     }
   }
-}
-
-export function adminAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  const apiKey = req.headers['x-api-key'] as string | undefined;
-
-  if (!apiKey || apiKey !== config.adminApiKey) {
-    res.status(401).json({ error: 'Invalid or missing API key' });
-    return;
-  }
-
-  next();
 }
 
 export async function tenantAuth(

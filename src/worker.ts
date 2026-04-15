@@ -12,6 +12,7 @@ import { scanTicketSync, processSyncTenantApp } from './queues/processors/ticket
 import { scanMessageEmbeddings, processEmbedMessage } from './queues/processors/messageEmbedding.processor';
 import { scanArticleEmbeddings, processEmbedChunk } from './queues/processors/articleEmbedding.processor';
 import { scanKbSync, processSyncKbApp } from './queues/processors/kbSync.processor';
+import { processGenerateKbFromTicket } from './queues/processors/ticketKb.processor';
 
 const workers: Worker[] = [];
 
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
       new Worker(QUEUE_NAMES.EMBED_MESSAGE, processEmbedMessage, { connection, concurrency: 5 }),
       new Worker(QUEUE_NAMES.EMBED_CHUNK, processEmbedChunk, { connection, concurrency: 5 }),
       new Worker(QUEUE_NAMES.SYNC_KB_APP, processSyncKbApp, { connection, concurrency: 3 }),
+      new Worker(QUEUE_NAMES.GENERATE_KB_FROM_TICKET, processGenerateKbFromTicket, { connection, concurrency: 3 }),
     );
 
     // Logging for all workers

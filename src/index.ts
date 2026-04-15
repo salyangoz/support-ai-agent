@@ -2,6 +2,7 @@ import { initSentry, Sentry } from './utils/sentry';
 initSentry();
 
 import express from 'express';
+import path from 'path';
 import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config';

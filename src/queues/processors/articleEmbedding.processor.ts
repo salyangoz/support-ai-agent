@@ -3,6 +3,7 @@ import { getQueue, QUEUE_NAMES } from '../queues';
 import * as tenantRepo from '../../repositories/tenant.repository';
 import * as chunkRepo from '../../repositories/knowledgeChunk.repository';
 import { embed } from '../../services/embedding.service';
+import { defaults } from '../../config';
 import { logger } from '../../utils/logger';
 
 /**
@@ -16,13 +17,16 @@ export async function scanArticleEmbeddings(job: Job): Promise<number> {
 
   for (const tenant of tenants) {
     const chunks = await chunkRepo.findChunksWithoutEmbedding(tenant.id);
-    const creds = (tenant.settings as any)?.ai_credentials;
+    const settings = tenant.settings as any;
+    const creds = settings?.embedding_credentials || settings?.ai_credentials;
 
     for (const chunk of chunks) {
       await queue.add('embed-chunk', {
         chunkId: chunk.id,
         text: chunk.content,
         credentials: creds,
+        embeddingService: settings?.embedding_service || defaults.embeddingService,
+        embeddingModel: settings?.embedding_model || defaults.embeddingModel,
       }, {
         jobId: `embed-chunk-${chunk.id}`,
         removeOnComplete: 100,
@@ -39,9 +43,9 @@ export async function scanArticleEmbeddings(job: Job): Promise<number> {
  * Worker: embeds one KB chunk.
  */
 export async function processEmbedChunk(job: Job): Promise<void> {
-  const { chunkId, text, credentials } = job.data;
+  const { chunkId, text, credentials, embeddingService, embeddingModel } = job.data;
 
-  const embedding = await embed(text, credentials);
+  const embedding = await embed(text, credentials, embeddingService, embeddingModel);
   if (embedding) {
     await chunkRepo.updateChunkEmbedding(chunkId, embedding);
   }

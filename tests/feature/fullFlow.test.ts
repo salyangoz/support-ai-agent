@@ -3,7 +3,6 @@ import supertest from 'supertest';
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 
 let request: ReturnType<typeof supertest>;
-const ADMIN_KEY = 'test-admin-key';
 
 describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
   beforeAll(async () => {
@@ -15,39 +14,14 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
   beforeEach(async () => { await truncateAll(); });
 
   it('should complete the full tenant setup and user flow', async () => {
-    // ─── 1. Admin creates a tenant ───
-    const tenantRes = await request
-      .post('/tenants')
-      .set('X-API-Key', ADMIN_KEY)
-      .send({ name: 'Acme Corp', slug: 'acme-corp' });
+    // ─── 1. Owner registers ───
+    const registerRes = await request
+      .post('/auth/register')
+      .send({ email: 'owner@acme.com', password: 'ownerpass123', name: 'Alice Owner' });
 
-    expect(tenantRes.status).toBe(201);
-    expect(tenantRes.body.name).toBe('Acme Corp');
-    expect(tenantRes.body.slug).toBe('acme-corp');
-    expect(tenantRes.body.api_key).toBeDefined();
-    expect(tenantRes.body.id).toBeDefined();
+    expect(registerRes.status).toBe(201);
 
-    const tenantId = tenantRes.body.id;
-    const tenantApiKey = tenantRes.body.api_key;
-
-    // ─── 2. Admin creates the owner user ───
-    const ownerRes = await request
-      .post(`/tenants/${tenantId}/users/owner`)
-      .set('X-API-Key', ADMIN_KEY)
-      .send({
-        email: 'owner@acme.com',
-        password: 'ownerpass123',
-        name: 'Alice Owner',
-      });
-
-    expect(ownerRes.status).toBe(201);
-    expect(ownerRes.body.user).toBeDefined();
-    expect(ownerRes.body.user.email).toBe('owner@acme.com');
-    expect(ownerRes.body.user.password_hash).toBeUndefined();
-    expect(ownerRes.body.tenant_user).toBeDefined();
-    expect(ownerRes.body.tenant_user.role).toBe('owner');
-
-    // ─── 3. Owner logs in ───
+    // ─── 2. Owner logs in ───
     const loginRes = await request
       .post('/auth/login')
       .send({ email: 'owner@acme.com', password: 'ownerpass123' });
@@ -56,12 +30,25 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
     expect(loginRes.body.access_token).toBeDefined();
     expect(loginRes.body.refresh_token).toBeDefined();
     expect(loginRes.body.user.email).toBe('owner@acme.com');
-    expect(loginRes.body.tenants).toHaveLength(1);
-    expect(loginRes.body.tenants[0].slug).toBe('acme-corp');
-    expect(loginRes.body.tenants[0].role).toBe('owner');
 
     const ownerToken = loginRes.body.access_token;
     const refreshToken = loginRes.body.refresh_token;
+
+    // ─── 3. Owner creates a tenant (becomes owner automatically) ───
+    const tenantRes = await request
+      .post('/my/tenants')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Acme Corp', slug: 'acme-corp' });
+
+    expect(tenantRes.status).toBe(201);
+    expect(tenantRes.body.name).toBe('Acme Corp');
+    expect(tenantRes.body.slug).toBe('acme-corp');
+    expect(tenantRes.body.api_key).toBeDefined();
+    expect(tenantRes.body.id).toBeDefined();
+    expect(tenantRes.body.tenant_user.role).toBe('owner');
+
+    const tenantId = tenantRes.body.id;
+    const tenantApiKey = tenantRes.body.api_key;
 
     // ─── 4. Owner gets their profile ───
     const meRes = await request
@@ -73,10 +60,10 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
     expect(meRes.body.tenants).toHaveLength(1);
     expect(meRes.body.password_hash).toBeUndefined();
 
-    // ─── 5. Admin configures tenant settings ───
+    // ─── 5. Owner configures tenant settings ───
     const settingsRes = await request
-      .put(`/tenants/${tenantId}`)
-      .set('X-API-Key', ADMIN_KEY)
+      .patch(`/tenants/${tenantId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         settings: {
           ai_model: 'gpt-4',
@@ -146,7 +133,7 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
       .set('Authorization', `Bearer ${ownerToken}`);
 
     expect(appsListRes.status).toBe(200);
-    expect(appsListRes.body).toHaveLength(3);
+    expect(appsListRes.body.data).toHaveLength(3);
 
     // ─── 10. Owner creates knowledge articles ───
     const article1Res = await request
@@ -246,7 +233,7 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(adminAppsRes.status).toBe(200);
-    expect(adminAppsRes.body).toHaveLength(3);
+    expect(adminAppsRes.body.data).toHaveLength(3);
 
     // Admin can also create apps
     const adminAppRes = await request
@@ -321,9 +308,19 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
     expect(newTokenMeRes.body.email).toBe('owner@acme.com');
 
     // ─── 20. Tenant isolation: user of tenant A cannot access tenant B ───
+    // Register a second user who creates tenant B
+    await request
+      .post('/auth/register')
+      .send({ email: 'other-owner@other.com', password: 'otherpass123', name: 'Other Owner' });
+
+    const otherLoginRes = await request
+      .post('/auth/login')
+      .send({ email: 'other-owner@other.com', password: 'otherpass123' });
+    const otherToken = otherLoginRes.body.access_token;
+
     const tenant2Res = await request
-      .post('/tenants')
-      .set('X-API-Key', ADMIN_KEY)
+      .post('/my/tenants')
+      .set('Authorization', `Bearer ${otherToken}`)
       .send({ name: 'Other Corp', slug: 'other-corp' });
 
     expect(tenant2Res.status).toBe(201);
@@ -349,7 +346,7 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
       .set('X-API-Key', tenantApiKey);
 
     expect(apiKeyAppsRes.status).toBe(200);
-    expect(apiKeyAppsRes.body.length).toBeGreaterThanOrEqual(3);
+    expect(apiKeyAppsRes.body.data.length).toBeGreaterThanOrEqual(3);
 
     // API key auth for creating customers also works
     const apiKeyCustomerRes = await request
@@ -360,62 +357,41 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
     expect(apiKeyCustomerRes.status).toBe(201);
   });
 
-  it('should prevent duplicate owner creation', async () => {
-    // Create tenant and owner
-    const tenantRes = await request
-      .post('/tenants')
-      .set('X-API-Key', ADMIN_KEY)
-      .send({ name: 'Unique Corp', slug: 'unique-corp' });
-
-    const tenantId = tenantRes.body.id;
-
-    await request
-      .post(`/tenants/${tenantId}/users/owner`)
-      .set('X-API-Key', ADMIN_KEY)
-      .send({ email: 'first-owner@test.com', password: 'password123', name: 'First' });
-
-    // Try to create a second owner — should fail
-    const secondOwnerRes = await request
-      .post(`/tenants/${tenantId}/users/owner`)
-      .set('X-API-Key', ADMIN_KEY)
-      .send({ email: 'second-owner@test.com', password: 'password123', name: 'Second' });
-
-    expect(secondOwnerRes.status).toBe(400);
-  });
-
   it('should allow a user to belong to multiple tenants', async () => {
-    // Create two tenants
+    // Register and login user
+    await request
+      .post('/auth/register')
+      .send({ email: 'multi@test.com', password: 'password123', name: 'Multi User' });
+
+    const multiLoginRes = await request
+      .post('/auth/login')
+      .send({ email: 'multi@test.com', password: 'password123' });
+    const multiToken = multiLoginRes.body.access_token;
+
+    // Create tenant 1 (becomes owner)
     const t1Res = await request
-      .post('/tenants')
-      .set('X-API-Key', ADMIN_KEY)
+      .post('/my/tenants')
+      .set('Authorization', `Bearer ${multiToken}`)
       .send({ name: 'Tenant One', slug: 'tenant-one' });
     const t1Id = t1Res.body.id;
 
+    // Register second user who creates tenant 2
+    await request
+      .post('/auth/register')
+      .send({ email: 'multi-t2-owner@test.com', password: 'password123', name: 'T2 Owner' });
+
+    const t2OwnerLoginRes = await request
+      .post('/auth/login')
+      .send({ email: 'multi-t2-owner@test.com', password: 'password123' });
+    const t2OwnerToken = t2OwnerLoginRes.body.access_token;
+
     const t2Res = await request
-      .post('/tenants')
-      .set('X-API-Key', ADMIN_KEY)
+      .post('/my/tenants')
+      .set('Authorization', `Bearer ${t2OwnerToken}`)
       .send({ name: 'Tenant Two', slug: 'tenant-two' });
     const t2Id = t2Res.body.id;
 
-    // Create owner in tenant 1
-    await request
-      .post(`/tenants/${t1Id}/users/owner`)
-      .set('X-API-Key', ADMIN_KEY)
-      .send({ email: 'multi@test.com', password: 'password123', name: 'Multi User' });
-
-    // Same user becomes admin in tenant 2 (via admin bootstrap since they already exist)
-    const t2OwnerRes = await request
-      .post(`/tenants/${t2Id}/users/owner`)
-      .set('X-API-Key', ADMIN_KEY)
-      .send({ email: 'multi-t2-owner@test.com', password: 'password123', name: 'T2 Owner' });
-    expect(t2OwnerRes.status).toBe(201);
-
-    // T2 owner logs in and invites multi@test.com
-    const t2LoginRes = await request
-      .post('/auth/login')
-      .send({ email: 'multi-t2-owner@test.com', password: 'password123' });
-    const t2OwnerToken = t2LoginRes.body.access_token;
-
+    // T2 owner invites multi@test.com as admin
     const inviteRes = await request
       .post(`/tenants/${t2Id}/users`)
       .set('Authorization', `Bearer ${t2OwnerToken}`)
@@ -423,26 +399,26 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
 
     expect(inviteRes.status).toBe(201);
 
-    // Multi user logs in — should see both tenants
-    const multiLoginRes = await request
+    // Multi user logs in again — should see both tenants
+    const multiLoginRes2 = await request
       .post('/auth/login')
       .send({ email: 'multi@test.com', password: 'password123' });
 
-    expect(multiLoginRes.status).toBe(200);
-    expect(multiLoginRes.body.tenants).toHaveLength(2);
+    expect(multiLoginRes2.status).toBe(200);
+    expect(multiLoginRes2.body.tenants).toHaveLength(2);
 
-    const multiToken = multiLoginRes.body.access_token;
+    const multiToken2 = multiLoginRes2.body.access_token;
 
     // Can access tenant 1 data
     const t1AppsRes = await request
       .get(`/tenants/${t1Id}/apps`)
-      .set('Authorization', `Bearer ${multiToken}`);
+      .set('Authorization', `Bearer ${multiToken2}`);
     expect(t1AppsRes.status).toBe(200);
 
     // Can access tenant 2 data
     const t2AppsRes = await request
       .get(`/tenants/${t2Id}/apps`)
-      .set('Authorization', `Bearer ${multiToken}`);
+      .set('Authorization', `Bearer ${multiToken2}`);
     expect(t2AppsRes.status).toBe(200);
   });
 
@@ -455,9 +431,18 @@ describe('Full Flow: Tenant Setup, User Auth & Configuration', () => {
   });
 
   it('should reject requests without authentication', async () => {
+    await request
+      .post('/auth/register')
+      .send({ email: 'noauth-owner@test.com', password: 'password123', name: 'No Auth Owner' });
+
+    const loginRes = await request
+      .post('/auth/login')
+      .send({ email: 'noauth-owner@test.com', password: 'password123' });
+    const token = loginRes.body.access_token;
+
     const tenantRes = await request
-      .post('/tenants')
-      .set('X-API-Key', ADMIN_KEY)
+      .post('/my/tenants')
+      .set('Authorization', `Bearer ${token}`)
       .send({ name: 'No Auth Corp', slug: 'no-auth-corp' });
 
     const tenantId = tenantRes.body.id;

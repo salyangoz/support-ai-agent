@@ -500,27 +500,25 @@ describe('E2E Pipeline Integration Tests', () => {
       const app = await createTestApp(tenant.id);
 
       // Mock the Intercom API calls that the real IntercomInputApp makes
+      const fullConversation = {
+        id: 'conv-sync-1',
+        state: 'open',
+        title: 'Order problem',
+        source: { body: '<p>My order is late</p>', author: { type: 'user', id: 'u1' } },
+        contacts: { contacts: [{ id: 'u1', email: 'sync-test@test.com', name: 'Sync User' }] },
+        conversation_parts: { conversation_parts: [
+          { id: 'part-1', body: 'I need help', author: { type: 'user', id: 'u1', name: 'Alice' }, created_at: 1700000000 },
+          { id: 'part-2', body: 'Let me check', author: { type: 'admin', id: 'a1', name: 'Support' }, created_at: 1700000100 },
+        ] },
+        created_at: 1700000000,
+        updated_at: 1700000200,
+      };
       const mockIntercomGet = vi.fn().mockResolvedValue({
-        data: {
-          conversation_parts: { conversation_parts: [
-            { id: 'part-1', body: 'I need help', author: { type: 'user', id: 'u1', name: 'Alice' }, created_at: 1700000000 },
-            { id: 'part-2', body: 'Let me check', author: { type: 'admin', id: 'a1', name: 'Support' }, created_at: 1700000100 },
-          ] },
-        },
+        data: fullConversation,
       });
       const mockIntercomPost = vi.fn().mockResolvedValue({
         data: {
-          conversations: [
-            {
-              id: 'conv-sync-1',
-              state: 'open',
-              title: 'Order problem',
-              source: { body: '<p>My order is late</p>', author: { type: 'user', id: 'u1' } },
-              contacts: { contacts: [{ id: 'u1', email: 'sync-test@test.com', name: 'Sync User' }] },
-              created_at: 1700000000,
-              updated_at: 1700000200,
-            },
-          ],
+          conversations: [fullConversation],
         },
       });
 

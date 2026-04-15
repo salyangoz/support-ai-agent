@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as aiDraftService from '../services/aiDraft.service';
 import * as draftService from '../services/draft.service';
 import { toSnakeCase } from '../utils/serializer';
+import { parsePaginationQuery } from '../utils/pagination';
 
 export async function generate(
   req: Request,
@@ -19,6 +20,29 @@ export async function generate(
   }
 }
 
+export async function listByTenant(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = req.params.tenantId as string;
+    const status = req.query.status as string | undefined;
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
+
+    const result = await draftService.getDraftsByTenantId(tenantId, {
+      status,
+      cursor: pagination.cursor,
+      limit: pagination.limit,
+      offset: !pagination.cursor ? offset : undefined,
+    });
+    res.status(200).json(toSnakeCase(result));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listByTicket(
   req: Request,
   res: Response,
@@ -27,12 +51,14 @@ export async function listByTicket(
   try {
     const tenantId = req.params.tenantId as string;
     const ticketId = req.params.id as string;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
 
-    const drafts = await draftService.getDraftsByTicketId(
+    const result = await draftService.getDraftsByTicketId(
       tenantId,
       ticketId,
+      { cursor: pagination.cursor, limit: pagination.limit },
     );
-    res.status(200).json(toSnakeCase(drafts));
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }

@@ -5,6 +5,7 @@ export interface IntercomConversation {
   source?: {
     body: string | null;
     author: { type: string; id: string; email?: string; name?: string };
+    attachments?: IntercomAttachment[];
   };
   contacts?: {
     contacts: Array<{ id: string; email?: string; name?: string }>;
@@ -22,11 +23,21 @@ export interface IntercomConversation {
   updated_at: number;
 }
 
+export interface IntercomAttachment {
+  id?: string;
+  type?: string;
+  url: string;
+  name?: string;
+  content_type?: string;
+  filesize?: number;
+}
+
 export interface IntercomConversationPart {
   id: string;
   part_type: string;
   body: string | null;
   author: { type: string; id: string; name?: string };
+  attachments?: IntercomAttachment[];
   created_at: number;
 }
 

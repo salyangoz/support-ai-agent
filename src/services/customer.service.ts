@@ -2,7 +2,7 @@ import * as customerRepo from '../repositories/customer.repository';
 
 export async function getCustomers(
   tenantId: string,
-  opts?: { email?: string; name?: string; page?: number; limit?: number },
+  opts?: { email?: string; name?: string; cursor?: string; limit?: number; page?: number },
 ) {
   return customerRepo.findCustomersByTenantId(tenantId, opts);
 }

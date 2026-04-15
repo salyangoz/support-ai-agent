@@ -24,7 +24,7 @@ describe('Feature: Apps', () => {
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual([]);
+      expect(res.body.data).toEqual([]);
     });
 
     it('should return apps after creation', async () => {
@@ -36,10 +36,10 @@ describe('Feature: Apps', () => {
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].code).toBe('intercom');
-      expect(res.body[0].type).toBe('ticket');
-      expect(res.body[0].role).toBe('both');
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].code).toBe('intercom');
+      expect(res.body.data[0].type).toBe('ticket');
+      expect(res.body.data[0].role).toBe('both');
     });
   });
 
@@ -121,7 +121,7 @@ describe('Feature: Apps', () => {
         .get(`/tenants/${tenant.id}/apps`)
         .set('X-API-Key', tenant.api_key);
 
-      expect(listRes.body).toHaveLength(0);
+      expect(listRes.body.data).toHaveLength(0);
     });
   });
 

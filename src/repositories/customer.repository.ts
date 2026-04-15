@@ -1,14 +1,16 @@
 import { Prisma } from '../generated/prisma/client';
 import { getPrisma } from '../database/prisma';
 import { generateId } from '../utils/uuid';
+import { buildPaginatedResult } from '../utils/pagination';
 
 export async function findCustomersByTenantId(
   tenantId: string,
   opts?: {
     email?: string;
     name?: string;
-    page?: number;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
   const where: Prisma.CustomerWhereInput = { tenantId };
@@ -21,21 +23,54 @@ export async function findCustomersByTenantId(
     where.name = { contains: opts.name, mode: 'insensitive' };
   }
 
-  const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 20;
+  const countWhere = { ...where };
 
-  return getPrisma().customer.findMany({
+  const include = { _count: { select: { tickets: true } } };
+
+  if (opts?.page && !opts?.cursor) {
+    const total = await getPrisma().customer.count({ where: countWhere });
+    const items = await getPrisma().customer.findMany({
+      where,
+      include,
+      orderBy: { id: 'desc' },
+      skip: (opts.page - 1) * limit,
+      take: limit,
+    });
+    return buildPaginatedResult(
+      items.map(({ _count, ...c }) => ({ ...c, ticketCount: _count.tickets })),
+      total,
+      limit,
+    );
+  }
+
+  if (opts?.cursor) {
+    where.id = { lt: opts.cursor };
+  }
+
+  const total = await getPrisma().customer.count({ where: countWhere });
+  const items = await getPrisma().customer.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
-    skip: (page - 1) * limit,
+    include,
+    orderBy: { id: 'desc' },
     take: limit,
   });
+
+  return buildPaginatedResult(
+    items.map(({ _count, ...c }) => ({ ...c, ticketCount: _count.tickets })),
+    total,
+    limit,
+  );
 }
 
 export async function findCustomerById(tenantId: string, id: string) {
-  return getPrisma().customer.findFirst({
+  const customer = await getPrisma().customer.findFirst({
     where: { tenantId, id },
+    include: { _count: { select: { tickets: true } } },
   });
+  if (!customer) return null;
+  const { _count, ...rest } = customer;
+  return { ...rest, ticketCount: _count.tickets };
 }
 
 export async function findCustomerByEmail(tenantId: string, email: string) {

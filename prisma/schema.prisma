@@ -93,6 +93,9 @@ model Ticket {
   externalCreatedAt DateTime? @map("external_created_at") @db.Timestamptz
   externalUpdatedAt DateTime? @map("external_updated_at") @db.Timestamptz
   syncedAt          DateTime  @default(now()) @map("synced_at") @db.Timestamptz
+  lastMessageAt     DateTime? @map("last_message_at") @db.Timestamptz
+  lastMessageBy     String?   @map("last_message_by") @db.VarChar(255)
+  lastMessageRole   String?   @map("last_message_role") @db.VarChar(20)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -124,13 +127,34 @@ model Message {
   externalCreatedAt DateTime?                    @map("external_created_at") @db.Timestamptz
   createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  ticket      Ticket              @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  attachments MessageAttachment[]
 
   @@unique([ticketId, externalId])
   @@index([ticketId])
   @@index([tenantId])
   @@map("messages")
+}
+
+model MessageAttachment {
+  id          String   @id @db.Uuid
+  messageId   String   @map("message_id") @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  externalId  String?  @map("external_id") @db.VarChar(255)
+  fileName    String   @map("file_name") @db.VarChar(500)
+  fileType    String?  @map("file_type") @db.VarChar(100)
+  fileSize    Int?     @map("file_size")
+  url         String
+  localPath   String?  @map("local_path") @db.VarChar(500)
+  contentText String?  @map("content_text")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([tenantId])
+  @@map("message_attachments")
 }
 
 model KnowledgeArticle {

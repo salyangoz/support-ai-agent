@@ -6,7 +6,7 @@ vi.mock('../../../src/repositories/tenant.repository', () => ({
 }));
 
 vi.mock('../../../src/config', () => ({
-  config: { adminApiKey: 'admin-secret-key' },
+  config: {},
   defaults: {},
 }));
 
@@ -23,33 +23,6 @@ describe('Auth Middleware', () => {
       json: vi.fn().mockReturnThis(),
     };
     mockNext = vi.fn();
-  });
-
-  describe('adminAuth', () => {
-    it('should pass with valid admin key', async () => {
-      const { adminAuth } = await import('../../../src/middleware/auth');
-      mockReq.headers = { 'x-api-key': 'admin-secret-key' };
-
-      await adminAuth(mockReq as Request, mockRes as Response, mockNext);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should return 401 with missing key', async () => {
-      const { adminAuth } = await import('../../../src/middleware/auth');
-      mockReq.headers = {};
-
-      await adminAuth(mockReq as Request, mockRes as Response, mockNext);
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 401 with invalid key', async () => {
-      const { adminAuth } = await import('../../../src/middleware/auth');
-      mockReq.headers = { 'x-api-key': 'wrong-key' };
-
-      await adminAuth(mockReq as Request, mockRes as Response, mockNext);
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-    });
   });
 
   describe('tenantAuth', () => {

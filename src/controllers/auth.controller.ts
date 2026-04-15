@@ -9,6 +9,36 @@ function stripPassword(user: any) {
   return rest;
 }
 
+export async function register(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { email, password, name } = req.body;
+
+    if (!email || !password || !name) {
+      res.status(400).json({ error: 'email, password and name are required' });
+      return;
+    }
+
+    if (password.length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return;
+    }
+
+    const result = await authService.register({ email, password, name });
+
+    res.status(201).json(toSnakeCase({
+      accessToken: result.tokens.accessToken,
+      refreshToken: result.tokens.refreshToken,
+      user: stripPassword(result.user),
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function login(
   req: Request,
   res: Response,

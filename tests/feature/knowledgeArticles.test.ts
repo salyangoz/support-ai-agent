@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import supertest from 'supertest';
 
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
@@ -145,6 +145,61 @@ describe('Feature: Knowledge Articles', () => {
         .set('X-API-Key', tenantA.api_key);
 
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Embedding status', () => {
+    it('should include embedding_status in article list', async () => {
+      const tenant = await createTenant();
+      await createKnowledgeArticle(tenant.id, { title: 'Test' });
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/knowledge-articles`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].embedding_status).toBeDefined();
+      expect(res.body.data[0].embedding_status.total_chunks).toBeGreaterThanOrEqual(0);
+      expect(res.body.data[0].embedding_status.embedded_chunks).toBe(0);
+    });
+
+    it('should include embedding_status in article show', async () => {
+      const tenant = await createTenant();
+      const article = await createKnowledgeArticle(tenant.id, { title: 'Test' });
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/knowledge-articles/${article.id}`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(200);
+      expect(res.body.embedding_status).toBeDefined();
+      expect(res.body.embedding_status.total_chunks).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('POST /tenants/:tenantId/knowledge-articles/:id/embed', () => {
+    it('should return 404 for non-existent article', async () => {
+      const tenant = await createTenant();
+
+      const res = await request
+        .post(`/tenants/${tenant.id}/knowledge-articles/00000000-0000-0000-0000-000000000000/embed`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /tenants/:tenantId/knowledge-articles/embed', () => {
+    it('should queue embedding jobs', async () => {
+      const tenant = await createTenant();
+
+      const res = await request
+        .post(`/tenants/${tenant.id}/knowledge-articles/embed`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(202);
+      expect(res.body.enqueued).toBeDefined();
+      expect(res.body.message).toBeDefined();
     });
   });
 });
