@@ -1,0 +1,296 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: support-ai-config
+  labels:
+    app: support-ai-agent
+data:
+  NODE_ENV: production
+  PORT: "3001"
+  YENGEC_AI_BASE_URL: https://ai.yengec.co
+  LOG_LEVEL: info
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: support-ai-secrets
+  labels:
+    app: support-ai-agent
+type: Opaque
+data:
+  # Base64 encode your values before applying:
+  # echo -n 'your-value' | base64
+  DATABASE_URL: Y2hhbmdlbWU=
+  # Format: redis://:password@external-redis:6379  (password URL-encoded if it has special chars)
+  REDIS_URL: Y2hhbmdlbWU=
+  JWT_SECRET: Y2hhbmdlbWU=
+  SENTRY_DSN: Y2hhbmdlbWU=
+---
+# Host-side Redis exposure.
+# Redis runs on the host (outside the cluster). Pods reach it via this
+# headless Service + manually-managed EndpointSlice that points to the node IP.
+# Update `endpoints[0].addresses[0]` to the IP reachable from pods (typically the
+# node's internal IP shown by `kubectl get node -o wide`).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-redis
+  labels:
+    app: support-ai-agent
+    component: redis
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: external-redis
+  labels:
+    kubernetes.io/service-name: external-redis
+    app: support-ai-agent
+    component: redis
+addressType: IPv4
+ports:
+  - name: redis
+    port: 6379
+    protocol: TCP
+endpoints:
+  - addresses:
+      - "10.42.0.1" # REPLACE: host IP reachable from cluster pods
+    conditions:
+      ready: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: support-ai-agent
+  labels:
+    app: support-ai-agent
+spec:
+  type: ClusterIP
+  selector:
+    app: support-ai-agent
+    component: api
+  ports:
+    - port: 3001
+      targetPort: 3001
+      protocol: TCP
+      name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: support-api.yengec.co
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: support-ai-agent
+                port:
+                  number: 3001
+---
+# ─── API HPA ───
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: support-ai-api
+  labels:
+    app: support-ai-agent
+    component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: support-ai-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# ─── Worker HPA ───
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: support-ai-worker
+  labels:
+    app: support-ai-agent
+    component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: support-ai-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# ─── API Deployment ───
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-ai-api
+  labels:
+    app: support-ai-agent
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: support-ai-agent
+      component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: support-ai-agent
+        component: api
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-pull-secret
+      containers:
+        - name: api
+          image: salyangoz/support-ai-agent:latest
+          command: ["node", "dist/index.js"]
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: support-ai-config
+            - secretRef:
+                name: support-ai-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+---
+# ─── Scheduler Deployment ───
+# Single replica: owns repeatable job registration + scanner processors.
+# Must stay at replicas: 1 to prevent parallel scanner runs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-ai-scheduler
+  labels:
+    app: support-ai-agent
+    component: scheduler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: support-ai-agent
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: support-ai-agent
+        component: scheduler
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-pull-secret
+      containers:
+        - name: scheduler
+          image: salyangoz/support-ai-agent:latest
+          command: ["node", "dist/scheduler.js"]
+          envFrom:
+            - configMapRef:
+                name: support-ai-config
+            - secretRef:
+                name: support-ai-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              cpu: "300m"
+---
+# ─── Worker Deployment ───
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-ai-worker
+  labels:
+    app: support-ai-agent
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: support-ai-agent
+      component: worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: support-ai-agent
+        component: worker
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-pull-secret
+      containers:
+        - name: worker
+          image: salyangoz/support-ai-agent:latest
+          command: ["node", "dist/worker.js"]
+          envFrom:
+            - configMapRef:
+                name: support-ai-config
+            - secretRef:
+                name: support-ai-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              cpu: "500m"
