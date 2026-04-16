@@ -11,6 +11,7 @@ export interface IntercomConversation {
     contacts: Array<{ id: string; email?: string; name?: string }>;
   };
   user?: { type: string; id: string; email?: string; name?: string };
+  admin_assignee_id?: number | null;
   assignee?: { id: string; name?: string };
   conversation_parts?: {
     conversation_parts: IntercomConversationPart[];

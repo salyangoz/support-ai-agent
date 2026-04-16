@@ -56,7 +56,6 @@ export async function createArticle(data: {
   title: string;
   content: string;
   category?: string;
-  language?: string;
   externalId?: string;
 }) {
   const article = await articleRepo.createArticle({
@@ -64,7 +63,6 @@ export async function createArticle(data: {
     title: data.title,
     content: data.content,
     category: data.category,
-    language: data.language,
     externalId: data.externalId,
   });
 
@@ -76,7 +74,7 @@ export async function createArticle(data: {
 export async function updateArticle(
   tenantId: string,
   id: string,
-  data: { title?: string; content?: string; category?: string; language?: string },
+  data: { title?: string; content?: string; category?: string },
 ) {
   const existing = await articleRepo.findArticleById(tenantId, id);
   if (!existing) return null;
@@ -95,7 +93,7 @@ export async function updateArticle(
 export async function upsertArticleByExternalId(
   tenantId: string,
   externalId: string,
-  data: { title: string; content: string; category?: string; language?: string },
+  data: { title: string; content: string; category?: string },
 ) {
   const existing = await articleRepo.findArticleByExternalId(tenantId, externalId);
 

@@ -64,7 +64,6 @@ export async function processSyncKbApp(job: Job): Promise<number> {
           title: article.title,
           content: article.content,
           category: article.category,
-          language: article.language,
         });
         synced++;
       } catch (err) {

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { findTenantBySlug } from '../repositories/tenant.repository';
+import { findTenantById } from '../repositories/tenant.repository';
 import { findAppById } from '../repositories/app.repository';
 import { createInputApp } from '../apps/app.factory';
 import { Tenant, App } from '../models/types';
@@ -19,11 +19,11 @@ export async function webhookAuth(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const tenantSlug = req.params.tenantSlug as string;
+  const tenantId = req.params.tenantId as string;
   const appIdParam = req.params.appId as string;
 
   try {
-    const tenant = await findTenantBySlug(tenantSlug) as Tenant | null;
+    const tenant = await findTenantById(tenantId) as Tenant | null;
 
     if (!tenant) {
       res.status(404).json({ error: 'Tenant not found' });
@@ -60,8 +60,18 @@ export async function webhookAuth(
       return;
     }
 
-    const adapter = createInputApp(app);
     const rawBody = req.body as Buffer;
+
+    // Respond to ping events without signature verification
+    try {
+      const payload = JSON.parse(rawBody.toString());
+      if (payload.topic === 'ping') {
+        res.status(200).json({ message: 'pong' });
+        return;
+      }
+    } catch { /* not JSON, continue with normal flow */ }
+
+    const adapter = createInputApp(app);
 
     const isValid = adapter.verifyWebhook(rawBody, req.headers);
 

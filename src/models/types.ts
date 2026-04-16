@@ -124,7 +124,6 @@ export interface KnowledgeArticle {
   title: string;
   content: string;
   category: string | null;
-  language: string | null;
   embedding: number[] | null;
   isActive: boolean;
   createdAt: Date;

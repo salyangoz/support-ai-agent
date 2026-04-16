@@ -89,7 +89,6 @@ export async function createArticle(data: {
   title: string;
   content: string;
   category?: string;
-  language?: string;
   externalId?: string;
 }) {
   return getPrisma().knowledgeArticle.create({
@@ -99,7 +98,6 @@ export async function createArticle(data: {
       title: data.title,
       content: data.content,
       category: data.category ?? null,
-      language: data.language ?? null,
       externalId: data.externalId ?? null,
     },
   });
@@ -112,7 +110,6 @@ export async function updateArticle(
     title?: string;
     content?: string;
     category?: string;
-    language?: string;
   },
 ) {
   const updateData: Prisma.KnowledgeArticleUpdateInput = {};
@@ -120,7 +117,6 @@ export async function updateArticle(
   if (data.title !== undefined) updateData.title = data.title;
   if (data.content !== undefined) updateData.content = data.content;
   if (data.category !== undefined) updateData.category = data.category;
-  if (data.language !== undefined) updateData.language = data.language;
 
   if (Object.keys(updateData).length === 0) {
     return findArticleById(tenantId, id);

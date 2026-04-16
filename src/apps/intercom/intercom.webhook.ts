@@ -59,7 +59,7 @@ export function parseIntercomWebhook(
       customerEmail: contact?.email,
       customerName: contact?.name,
       customerExternalId: contact?.id ? String(contact.id) : undefined,
-      assigneeId: item.assignee?.id ? String(item.assignee.id) : undefined,
+      assigneeId: item.admin_assignee_id ? String(item.admin_assignee_id) : item.assignee?.id ? String(item.assignee.id) : undefined,
       latestMessageBody: latestPart?.body || item.conversation_message?.body || item.source?.body,
       latestMessageExternalId: latestPart?.id ? String(latestPart.id) : undefined,
       latestMessageAuthorType: latestPart?.author?.type || 'user',

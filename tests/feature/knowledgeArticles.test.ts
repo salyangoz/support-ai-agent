@@ -26,7 +26,6 @@ describe('Feature: Knowledge Articles', () => {
           title: 'Getting Started',
           content: 'Here is how to get started...',
           category: 'onboarding',
-          language: 'en',
         });
 
       expect(res.status).toBe(201);

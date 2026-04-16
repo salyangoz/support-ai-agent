@@ -14,6 +14,7 @@ export const QUEUE_NAMES = {
   SCAN_KB_SYNC: 'scan-kb-sync',
   SYNC_KB_APP: 'sync-kb-app',
   GENERATE_KB_FROM_TICKET: 'generate-kb-from-ticket',
+  WEBHOOK_EVENT: 'webhook-event',
 } as const;
 
 let queues: Map<string, Queue> | null = null;

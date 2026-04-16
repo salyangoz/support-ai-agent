@@ -149,10 +149,12 @@ export class IntercomInputApp implements InputApp {
 export class IntercomOutputApp implements OutputApp {
   private client: AxiosInstance;
   private sendAsNote: boolean;
+  private defaultAdminId?: string;
 
-  constructor(credentials: Pick<IntercomCredentials, 'accessToken'>, config?: { sendAsNote?: boolean }) {
+  constructor(credentials: Pick<IntercomCredentials, 'accessToken'>, config?: { sendAsNote?: boolean; adminId?: string }) {
     this.client = createIntercomClient(credentials.accessToken);
     this.sendAsNote = config?.sendAsNote ?? false;
+    this.defaultAdminId = config?.adminId;
   }
 
   async sendReply(
@@ -160,16 +162,25 @@ export class IntercomOutputApp implements OutputApp {
     body: string,
     options?: SendReplyOptions,
   ): Promise<void> {
+    const adminId = options?.adminId || this.defaultAdminId;
+    if (!adminId) {
+      throw new Error('Intercom admin_id is required. Set it in app config or pass via options.');
+    }
+
     try {
       await this.client.post(`/conversations/${externalTicketId}/reply`, {
         message_type: this.sendAsNote ? 'note' : 'comment',
         type: 'admin',
-        admin_id: options?.adminId || 'default',
+        admin_id: adminId,
         body,
       });
-    } catch (err) {
-      logger.error(`Failed to send reply to conversation ${externalTicketId}`, err);
-      throw err;
+    } catch (err: any) {
+      const detail = err?.response?.data
+        ? JSON.stringify(err.response.data)
+        : err?.message;
+      throw new Error(
+        `Intercom reply failed (${err?.response?.status}): ${detail}`,
+      );
     }
   }
 }

@@ -238,8 +238,8 @@ export function createRouter(): Router {
     attachmentController.serve,
   );
 
-  // Webhook routes (app ID based)
-  router.post('/webhooks/:tenantSlug/:appId', webhookAuth, webhookController.receive);
+  // Webhook routes
+  router.post('/webhooks/:tenantId/apps/:appId', webhookAuth, webhookController.receive);
 
   // Error handler
   router.use(errorHandler);

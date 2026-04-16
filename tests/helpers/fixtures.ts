@@ -194,7 +194,6 @@ export async function createKnowledgeArticle(
     title: overrides.title ?? `Article ${n}`,
     content: overrides.content ?? `Content for article ${n}`,
     category: overrides.category ?? 'general',
-    language: overrides.language ?? 'en',
     isActive: overrides.is_active ?? true,
   };
 
@@ -205,7 +204,6 @@ export async function createKnowledgeArticle(
     title: a.title,
     content: a.content,
     category: a.category,
-    language: a.language,
     is_active: a.isActive,
     created_at: a.createdAt,
     updated_at: a.updatedAt,

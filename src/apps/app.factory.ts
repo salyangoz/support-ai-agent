@@ -1,5 +1,6 @@
-import { InputApp, OutputApp, KnowledgeSourceApp } from './app.interface';
+import { InputApp, OutputApp, KnowledgeSourceApp, WebhookEventHandler } from './app.interface';
 import { IntercomInputApp, IntercomOutputApp } from './intercom/intercom.app';
+import { handleEvent as intercomHandleEvent } from './intercom/intercom.webhookHandler';
 import { GitHubKnowledgeApp } from './github/github.app';
 import { WebScraperApp } from './web-scraper/web-scraper.app';
 import { SlackKbApp } from './slack-kb/slack-kb.app';
@@ -18,8 +19,8 @@ export function createInputApp(app: App): InputApp {
   switch (app.code) {
     case 'intercom':
       return new IntercomInputApp({
-        accessToken: credentials.accessToken,
-        clientSecret: credentials.clientSecret,
+        accessToken: credentials.access_token || credentials.accessToken,
+        clientSecret: credentials.client_secret || credentials.clientSecret,
       });
     default:
       throw new Error(`Unknown app code: ${app.code}`);
@@ -40,12 +41,21 @@ export function createOutputApp(app: App): OutputApp {
     case 'intercom': {
       const appConfig = app.config as Record<string, any>;
       return new IntercomOutputApp(
-        { accessToken: credentials.accessToken },
-        { sendAsNote: appConfig.send_as_note === true },
+        { accessToken: credentials.access_token || credentials.accessToken },
+        { sendAsNote: !!appConfig.send_as_note && appConfig.send_as_note !== 'false', adminId: appConfig.admin_id },
       );
     }
     default:
       throw new Error(`Unknown app code: ${app.code}`);
+  }
+}
+
+export function createWebhookHandler(app: App): WebhookEventHandler {
+  switch (app.code) {
+    case 'intercom':
+      return intercomHandleEvent;
+    default:
+      throw new Error(`No webhook handler for app code: ${app.code}`);
   }
 }
 

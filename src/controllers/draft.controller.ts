@@ -3,6 +3,7 @@ import * as aiDraftService from '../services/aiDraft.service';
 import * as draftService from '../services/draft.service';
 import { toSnakeCase } from '../utils/serializer';
 import { parsePaginationQuery } from '../utils/pagination';
+import { logger } from '../utils/logger';
 
 export async function generate(
   req: Request,
@@ -91,6 +92,21 @@ export async function updateStatus(
     if (!draft) {
       res.status(404).json({ error: 'Draft not found' });
       return;
+    }
+
+    if (status === 'approved' && req.tenant?.settings?.auto_send_drafts) {
+      try {
+        const tenant = req.tenant!;
+        const sent = await aiDraftService.sendDraft(tenant, draftId);
+        res.status(200).json(toSnakeCase(sent));
+        return;
+      } catch (err) {
+        logger.error('Auto-send failed after approval', {
+          tenantId,
+          draftId,
+          error: (err as Error).message,
+        });
+      }
     }
 
     res.status(200).json(toSnakeCase(draft));

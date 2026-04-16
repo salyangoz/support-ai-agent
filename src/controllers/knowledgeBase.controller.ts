@@ -59,7 +59,7 @@ export async function create(
 ): Promise<void> {
   try {
     const tenantId = req.params.tenantId as string;
-    const { title, content, category, language } = req.body;
+    const { title, content, category } = req.body;
 
     if (!title || !content) {
       res.status(400).json({
@@ -73,7 +73,6 @@ export async function create(
       title,
       content,
       category,
-      language,
     });
 
     res.status(201).json(toSnakeCase(article));
@@ -90,13 +89,12 @@ export async function update(
   try {
     const tenantId = req.params.tenantId as string;
     const id = req.params.id as string;
-    const { title, content, category, language } = req.body;
+    const { title, content, category } = req.body;
 
     const article = await knowledgeBaseService.updateArticle(tenantId, id, {
       title,
       content,
       category,
-      language,
     });
 
     if (!article) {

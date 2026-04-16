@@ -260,7 +260,11 @@ export async function sendDraft(tenant: Tenant, draftId: string) {
 
   const anySuccess = results.some((r) => r.status === 'fulfilled');
   if (!anySuccess) {
-    throw new Error('Failed to send draft to all output apps');
+    const errors = results
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map((r) => r.reason?.message || 'Unknown error')
+      .join('; ');
+    throw new Error(`Failed to send draft to all output apps: ${errors}`);
   }
 
   await draftRepo.updateDraftStatus(tenant.id, draftId, 'sent');

@@ -396,9 +396,6 @@ components:
         category:
           type: string
           nullable: true
-        language:
-          type: string
-          nullable: true
         is_active:
           type: boolean
         created_at:
@@ -787,8 +784,6 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Tenant not found
-
-  /tenants/{tenantId}:
     get:
       tags: [Tenants]
       summary: Get tenant details
@@ -1010,7 +1005,7 @@ paths:
                   type: object
                   description: |
                     App-specific config per code:
-                    - intercom: `{ send_as_note?: boolean }` — when true, draft replies are added as internal notes instead of customer-visible comments
+                    - intercom: `{ send_as_note?: boolean, admin_id?: string }` — send_as_note: replies as internal notes; admin_id: Intercom admin ID used for sending replies
                     - web-scraper: `{ url, selector?, max_pages? }`
                     - slack-kb: `{ channel_ids, min_replies?, lookback_days?, ai_service?, ai_model? }`
       responses:
@@ -1457,8 +1452,6 @@ paths:
                   type: string
                 category:
                   type: string
-                language:
-                  type: string
       responses:
         '201':
           description: Article created
@@ -1514,8 +1507,6 @@ paths:
                 content:
                   type: string
                 category:
-                  type: string
-                language:
                   type: string
       responses:
         '200':
@@ -1873,16 +1864,12 @@ paths:
           description: Attachment not found
 
   # ── Webhooks ──
-  /webhooks/{tenantSlug}/{appId}:
+  /webhooks/{tenantId}/apps/{appId}:
     post:
       tags: [Webhooks]
       summary: Receive webhook from provider
       parameters:
-        - name: tenantSlug
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/tenantId'
         - name: appId
           in: path
           required: true

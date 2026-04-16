@@ -31,7 +31,7 @@ vi.mock('../../src/lib/yengec-ai', () => {
 
 import axios from 'axios';
 import { chat as mockYengecChat, embed as mockYengecEmbed } from '../../src/lib/yengec-ai';
-import * as webhookHandler from '../../src/services/webhookHandler.service';
+import * as webhookHandler from '../../src/apps/intercom/intercom.webhookHandler';
 import * as aiDraftService from '../../src/services/aiDraft.service';
 import * as ticketSyncService from '../../src/services/ticketSync.service';
 import { createInputApp } from '../../src/apps/app.factory';
@@ -82,6 +82,7 @@ async function createTestApp(tenantId: string, overrides: Record<string, any> = 
       type: 'ticket',
       role: 'both',
       credentials: { accessToken: 'test-tok', clientSecret: 'test-sec' },
+      config: { admin_id: 'test-admin' },
       ...overrides,
     },
   });

@@ -1,13 +1,13 @@
-import { Tenant, App, TenantSettings } from '../models/types';
-import { WebhookEvent } from '../apps/app.interface';
-import { embed } from './embedding.service';
-import { generateDraft, sendDraft } from './aiDraft.service';
-import { generateKbFromTicket } from './ticketKb.service';
-import * as customerRepo from '../repositories/customer.repository';
-import * as ticketRepo from '../repositories/ticket.repository';
-import * as messageRepo from '../repositories/message.repository';
-import { defaults } from '../config';
-import { logger } from '../utils/logger';
+import { Tenant, App, TenantSettings } from '../../models/types';
+import { WebhookEvent } from '../app.interface';
+import { embed } from '../../services/embedding.service';
+import { generateDraft, sendDraft } from '../../services/aiDraft.service';
+import { generateKbFromTicket } from '../../services/ticketKb.service';
+import * as customerRepo from '../../repositories/customer.repository';
+import * as ticketRepo from '../../repositories/ticket.repository';
+import * as messageRepo from '../../repositories/message.repository';
+import { defaults } from '../../config';
+import { logger } from '../../utils/logger';
 
 function getSetting<K extends keyof TenantSettings>(
   tenant: Tenant,
@@ -118,11 +118,19 @@ async function handleNewCustomerReply(
     body: event.data.latestMessageBody,
   });
 
-  const draft = await generateDraft(tenant, ticket.id);
+  try {
+    const draft = await generateDraft(tenant, ticket.id);
 
-  const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
-  if (autoSend && draft) {
-    await sendDraft(tenant, draft.id);
+    const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
+    if (autoSend && draft) {
+      await sendDraft(tenant, draft.id);
+    }
+  } catch (err) {
+    logger.error('Draft generation failed for customer reply', {
+      tenantId: tenant.id,
+      ticketId: ticket.id,
+      error: (err as Error).message,
+    });
   }
 }
 
