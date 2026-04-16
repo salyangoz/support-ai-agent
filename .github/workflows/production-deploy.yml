@@ -60,13 +60,8 @@ jobs:
   deploy:
     needs:
       - build-image
-    runs-on: ubuntu-latest
+    runs-on: backend-runner
     steps:
-      - name: Setup kubectl
-        uses: tale/kubectl-action@v1
-        with:
-          base64-kube-config: ${{ secrets.PRODUCTION_K3S_CONFIG }}
-
       - name: Sync Docker Hub pull secret
         run: |
           kubectl create secret docker-registry dockerhub-pull-secret \
