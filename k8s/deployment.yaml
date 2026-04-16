@@ -24,10 +24,10 @@ spec:
         component: api
     spec:
       imagePullSecrets:
-        - name: ghcr-pull-secret
+        - name: dockerhub-pull-secret
       containers:
         - name: api
-          image: ghcr.io/salyangoz/support-ai-agent:latest
+          image: salyangoz/support-ai-agent:latest
           command: ["node", "dist/index.js"]
           ports:
             - containerPort: 3001
@@ -85,10 +85,10 @@ spec:
         component: scheduler
     spec:
       imagePullSecrets:
-        - name: ghcr-pull-secret
+        - name: dockerhub-pull-secret
       containers:
         - name: scheduler
-          image: ghcr.io/salyangoz/support-ai-agent:latest
+          image: salyangoz/support-ai-agent:latest
           command: ["node", "dist/scheduler.js"]
           envFrom:
             - configMapRef:
@@ -128,10 +128,10 @@ spec:
         component: worker
     spec:
       imagePullSecrets:
-        - name: ghcr-pull-secret
+        - name: dockerhub-pull-secret
       containers:
         - name: worker
-          image: ghcr.io/salyangoz/support-ai-agent:latest
+          image: salyangoz/support-ai-agent:latest
           command: ["node", "dist/worker.js"]
           envFrom:
             - configMapRef:
