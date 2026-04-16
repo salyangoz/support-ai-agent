@@ -53,7 +53,7 @@ function mapAuthorRole(type: string): NormalizedMessage['authorRole'] {
   }
 }
 
-function mapAttachments(attachments?: IntercomAttachment[]): NormalizedAttachment[] | undefined {
+export function mapAttachments(attachments?: IntercomAttachment[]): NormalizedAttachment[] | undefined {
   if (!attachments || attachments.length === 0) return undefined;
 
   return attachments.map((a) => ({

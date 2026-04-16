@@ -26,5 +26,5 @@ export async function processWebhookEvent(job: Job): Promise<void> {
   }
 
   const handleEvent = createWebhookHandler(app as any);
-  await handleEvent(tenant, app as any, event);
+  await handleEvent(tenant as any, app as any, event);
 }

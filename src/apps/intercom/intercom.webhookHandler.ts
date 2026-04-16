@@ -63,7 +63,7 @@ async function handleNewTicket(
     initialBody: event.data.latestMessageBody,
     assigneeId: event.data.assigneeId,
     customerId: customer?.id,
-    externalCreatedAt: event.data.createdAt,
+    externalCreatedAt: event.data.createdAt ? new Date(event.data.createdAt * 1000) : undefined,
   });
 
   if (event.data.latestMessageBody) {

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { WebhookEvent } from '../app.interface';
 import { IntercomWebhookPayload } from './intercom.types';
+import { mapAttachments } from './intercom.mapper';
 
 const TOPIC_MAP: Record<string, WebhookEvent['type']> = {
   'conversation.user.created': 'new_ticket',
@@ -60,12 +61,12 @@ export function parseIntercomWebhook(
       customerName: contact?.name,
       customerExternalId: contact?.id ? String(contact.id) : undefined,
       assigneeId: item.admin_assignee_id ? String(item.admin_assignee_id) : item.assignee?.id ? String(item.assignee.id) : undefined,
-      latestMessageBody: latestPart?.body || item.conversation_message?.body || item.source?.body,
+      latestMessageBody: latestPart?.body || item.conversation_message?.body || item.source?.body || undefined,
       latestMessageExternalId: latestPart?.id ? String(latestPart.id) : undefined,
       latestMessageAuthorType: latestPart?.author?.type || 'user',
       latestMessageAuthorId: latestPart?.author?.id ? String(latestPart.author.id) : undefined,
       latestMessageAuthorName: latestPart?.author?.name,
-      latestMessageAttachments: latestPart?.attachments || item.source?.attachments || [],
+      latestMessageAttachments: mapAttachments(latestPart?.attachments || item.source?.attachments),
       createdAt: payload.created_at,
     },
   };
