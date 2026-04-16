@@ -4,14 +4,6 @@ Base URL: `http://localhost:3001`
 
 ## Authentication
 
-### Admin Endpoints
-
-Use the `X-API-Key` header with the admin API key (set via `ADMIN_API_KEY` env var).
-
-```
-X-API-Key: your-admin-secret-key
-```
-
 ### Tenant Endpoints
 
 Use the `X-API-Key` header with the tenant's API key (returned when creating a tenant).
@@ -21,6 +13,10 @@ X-API-Key: tenant-api-key
 ```
 
 The middleware validates that the API key belongs to the tenant specified in the URL `:tenantId` parameter. Returns `403` if there is a mismatch.
+
+### User Endpoints
+
+Use the `Authorization: Bearer <jwt>` header. JWT is issued via the auth endpoints and checked against `tenant_users` membership for tenant-scoped routes.
 
 ### Webhook Endpoints
 
@@ -45,13 +41,13 @@ No authentication required.
 
 ---
 
-## Tenants (Admin)
+## Tenants
 
-### `POST /api/v1/tenants`
+### `POST /my/tenants`
 
-Create a new tenant. Returns a generated API key.
+Authenticated user creates a new tenant and becomes its owner. Returns a generated API key.
 
-**Auth**: Admin API key
+**Auth**: User JWT
 
 **Request Body**
 
@@ -89,27 +85,27 @@ Create a new tenant. Returns a generated API key.
 }
 ```
 
-**Errors**: `400` name or slug missing, `401` invalid admin key
+**Errors**: `400` name or slug missing, `401` unauthenticated
 
 ---
 
-### `GET /api/v1/tenants/:tenantId`
+### `GET /tenants/:tenantId`
 
 Get tenant details.
 
-**Auth**: Admin API key
+**Auth**: User JWT with role `owner` or `admin` on the tenant
 
 **Response** `200`: Tenant object
 
-**Errors**: `404` tenant not found
+**Errors**: `403` insufficient role, `404` tenant not found
 
 ---
 
-### `PUT /api/v1/tenants/:tenantId`
+### `PATCH /tenants/:tenantId`
 
-Update tenant name or settings.
+Update tenant name or settings (partial merge).
 
-**Auth**: Admin API key
+**Auth**: User JWT with role `owner`
 
 **Request Body**
 
@@ -126,7 +122,7 @@ Update tenant name or settings.
 
 **Response** `200`: Updated tenant object
 
-**Errors**: `404` tenant not found
+**Errors**: `403` not owner, `404` tenant not found
 
 ---
 

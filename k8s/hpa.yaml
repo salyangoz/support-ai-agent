@@ -3,7 +3,6 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: support-ai-api
-  namespace: support-ai
   labels:
     app: support-ai-agent
     component: api
@@ -27,7 +26,6 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: support-ai-worker
-  namespace: support-ai
   labels:
     app: support-ai-agent
     component: worker

@@ -9,6 +9,7 @@ import { config } from './config';
 import { logger } from './utils/logger';
 import { createRouter } from './routes';
 import { createQueueDashboard } from './queues/dashboard';
+import { runMigrations } from './database/migrate';
 
 export function createApp(): express.Application {
   const app = express();
@@ -32,6 +33,8 @@ export function createApp(): express.Application {
 
 async function main(): Promise<void> {
   try {
+    await runMigrations();
+
     const app = createApp();
 
     app.listen(config.port, () => {

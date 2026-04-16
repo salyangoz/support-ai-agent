@@ -247,14 +247,13 @@ Tenants configure their own AI provider and credentials in `tenant.settings`:
 
 ```
 k8s/
-├── namespace.yaml
-├── configmap.yaml      (NODE_ENV, PORT, REDIS_URL, YENGEC_AI_BASE_URL)
-├── secret.yaml         (DATABASE_URL, ADMIN_API_KEY, JWT_SECRET)
-├── redis.yaml          (Redis deployment + service)
-├── deployment.yaml     (API deployment + Worker deployment)
-├── service.yaml        (ClusterIP → API pods only)
-├── ingress.yaml        (TLS termination → support-ai.yengec.co)
-└── hpa.yaml            (API: 2-10 pods, Worker: 1-5 pods)
+├── configmap.yaml         (NODE_ENV, PORT, REDIS_URL, YENGEC_AI_BASE_URL)
+├── secret.yaml            (DATABASE_URL, JWT_SECRET, SENTRY_DSN)
+├── external-redis.yaml    (Service + Endpoints → host-side Redis)
+├── deployment.yaml        (API + Scheduler + Worker deployments)
+├── service.yaml           (ClusterIP → API pods only)
+├── ingress.yaml           (TLS termination → support-api.yengec.co)
+└── hpa.yaml               (API: 2-10 pods, Worker: 1-5 pods)
 ```
 
 Same Docker image, different entrypoint:

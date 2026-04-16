@@ -5,13 +5,13 @@ import { Worker } from 'bullmq';
 import { logger } from './utils/logger';
 import { getRedisConnection, closeRedisConnection } from './queues/connection';
 import { QUEUE_NAMES } from './queues/queues';
-import { registerRepeatableJobs } from './scheduler';
+import { runMigrations } from './database/migrate';
 
-// Scanner processors (find work → fan out)
-import { scanTicketSync, processSyncTenantApp } from './queues/processors/ticketSync.processor';
-import { scanMessageEmbeddings, processEmbedMessage } from './queues/processors/messageEmbedding.processor';
-import { scanArticleEmbeddings, processEmbedChunk } from './queues/processors/articleEmbedding.processor';
-import { scanKbSync, processSyncKbApp } from './queues/processors/kbSync.processor';
+// Granular processors (one unit of work per job)
+import { processSyncTenantApp } from './queues/processors/ticketSync.processor';
+import { processEmbedMessage } from './queues/processors/messageEmbedding.processor';
+import { processEmbedChunk } from './queues/processors/articleEmbedding.processor';
+import { processSyncKbApp } from './queues/processors/kbSync.processor';
 import { processGenerateKbFromTicket } from './queues/processors/ticketKb.processor';
 import { processWebhookEvent } from './queues/processors/webhookEvent.processor';
 
@@ -19,20 +19,10 @@ const workers: Worker[] = [];
 
 async function main(): Promise<void> {
   try {
+    await runMigrations();
+
     const connection = getRedisConnection();
 
-    // Register repeatable scanner schedules
-    await registerRepeatableJobs();
-
-    // Scanner workers (concurrency 1 — only one scan at a time)
-    workers.push(
-      new Worker(QUEUE_NAMES.SCAN_TICKET_SYNC, scanTicketSync, { connection, concurrency: 1 }),
-      new Worker(QUEUE_NAMES.SCAN_MESSAGE_EMBEDDINGS, scanMessageEmbeddings, { connection, concurrency: 1 }),
-      new Worker(QUEUE_NAMES.SCAN_ARTICLE_EMBEDDINGS, scanArticleEmbeddings, { connection, concurrency: 1 }),
-      new Worker(QUEUE_NAMES.SCAN_KB_SYNC, scanKbSync, { connection, concurrency: 1 }),
-    );
-
-    // Granular workers (higher concurrency — process items in parallel)
     workers.push(
       new Worker(QUEUE_NAMES.SYNC_TENANT_APP, processSyncTenantApp, { connection, concurrency: 3 }),
       new Worker(QUEUE_NAMES.EMBED_MESSAGE, processEmbedMessage, { connection, concurrency: 5 }),
@@ -42,7 +32,6 @@ async function main(): Promise<void> {
       new Worker(QUEUE_NAMES.WEBHOOK_EVENT, processWebhookEvent, { connection, concurrency: 5 }),
     );
 
-    // Logging for all workers
     for (const w of workers) {
       w.on('completed', (job) => {
         logger.info(`Job completed: ${job.name}`, {
@@ -71,7 +60,6 @@ async function main(): Promise<void> {
 
     logger.info(`Worker process running — ${workers.length} queue consumers active`);
 
-    // Graceful shutdown
     const shutdown = async () => {
       logger.info('Shutting down workers...');
       await Promise.all(workers.map((w) => w.close()));

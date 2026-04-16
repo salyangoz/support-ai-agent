@@ -311,7 +311,6 @@ This starts both the app (port 3001) and PostgreSQL with pgvector (port 5433).
 |----------|-------------|---------|
 | `PORT` | Server port | `3001` |
 | `NODE_ENV` | Environment | `development` |
-| `ADMIN_API_KEY` | Admin API key for tenant management | required |
 | `DATABASE_URL` | PostgreSQL connection string | required |
 | `YENGEC_AI_BASE_URL` | AI backend URL | `https://ai.yengec.co` |
 | `LOG_LEVEL` | Winston log level | `info` |

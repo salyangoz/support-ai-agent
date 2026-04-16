@@ -1,0 +1,87 @@
+name: Production Docker Image Deploy
+on:
+  push:
+    branches:
+      - master
+
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Activate debug'
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace
+          path: .
+          retention-days: 1
+          include-hidden-files: true
+
+  build-image:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: workspace
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/salyangoz/support-ai-agent:latest
+          cache-from: type=registry,ref=ghcr.io/salyangoz/support-ai-agent:buildcache
+          cache-to: type=registry,ref=ghcr.io/salyangoz/support-ai-agent:buildcache,mode=max
+
+  deploy:
+    needs:
+      - build-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup kubectl
+        uses: tale/kubectl-action@v1
+        with:
+          base64-kube-config: ${{ secrets.PRODUCTION_K3S_CONFIG }}
+
+      - name: Sync GHCR pull secret
+        run: |
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --docker-server=ghcr.io \
+            --docker-username='${{ secrets.DOCKER_USERNAME }}' \
+            --docker-password='${{ secrets.DOCKER_PASSWORD }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Rollout api
+        run: kubectl rollout restart deployment/support-ai-api
+
+      - name: Rollout scheduler
+        run: kubectl rollout restart deployment/support-ai-scheduler
+
+      - name: Rollout worker
+        run: kubectl rollout restart deployment/support-ai-worker

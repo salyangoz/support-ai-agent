@@ -41,7 +41,7 @@ Every new endpoint MUST include:
 
 ## Authentication
 
-- `adminAuth` — `X-API-Key` header matching `ADMIN_API_KEY` env var
+- `tenantAuth` — `X-API-Key` header validated against `tenants.apiKey` in DB
 - `tenantOrUserAuth` — accepts either `X-API-Key` (tenant) or `Bearer` JWT (user)
 - `userAuth` — JWT only, checks tenant_users membership for tenant-scoped routes
 - `requireRole(...roles)` — checks `req.tenantUser.role`, no-op for API key auth
