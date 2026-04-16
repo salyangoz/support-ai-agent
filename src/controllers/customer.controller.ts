@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as customerService from '../services/customer.service';
 import { toSnakeCase } from '../utils/serializer';
+import { parsePaginationQuery } from '../utils/pagination';
 
 export async function list(
   req: Request,
@@ -8,17 +9,19 @@ export async function list(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const { email, name, page, limit } = req.query;
+    const tenantId = req.params.tenantId as string;
+    const { email, name, page } = req.query;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
 
-    const customers = await customerService.getCustomers(tenantId, {
+    const result = await customerService.getCustomers(tenantId, {
       email: email as string | undefined,
       name: name as string | undefined,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
+      cursor: pagination.cursor,
+      limit: pagination.limit,
+      page: !pagination.cursor && page ? Number(page) : undefined,
     });
 
-    res.status(200).json({ data: toSnakeCase(customers) });
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }
@@ -30,8 +33,8 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
     const customer = await customerService.getCustomerById(tenantId, id);
 
     if (!customer) {
@@ -51,7 +54,7 @@ export async function create(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { email, name, phone, external_id, metadata } = req.body;
 
     if (!email) {
@@ -80,8 +83,8 @@ export async function updateMetadata(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
     const { metadata } = req.body;
 
     if (!metadata) {

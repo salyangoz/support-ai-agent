@@ -1,14 +1,17 @@
 import { Prisma } from '../generated/prisma/client';
 import { getPrisma } from '../database/prisma';
+import { generateId } from '../utils/uuid';
+import { buildPaginatedResult, PaginatedResult } from '../utils/pagination';
 
 export async function findTicketsByTenantId(
-  tenantId: number,
+  tenantId: string,
   opts?: {
-    inputAppId?: number;
+    inputAppId?: string;
     state?: string;
-    customerId?: number;
-    page?: number;
+    customerId?: string;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
   const where: Prisma.TicketWhereInput = { tenantId };
@@ -23,18 +26,43 @@ export async function findTicketsByTenantId(
     where.customerId = opts.customerId;
   }
 
-  const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 20;
+  const countWhere = { ...where };
 
-  return getPrisma().ticket.findMany({
+  const include = {
+    customer: { select: { id: true, email: true, name: true } },
+  };
+
+  // Legacy offset pagination
+  if (opts?.page && !opts?.cursor) {
+    const total = await getPrisma().ticket.count({ where: countWhere });
+    const items = await getPrisma().ticket.findMany({
+      where,
+      include,
+      orderBy: { id: 'desc' },
+      skip: (opts.page - 1) * limit,
+      take: limit,
+    });
+    return buildPaginatedResult(items, total, limit);
+  }
+
+  // Cursor pagination
+  if (opts?.cursor) {
+    where.id = { lt: opts.cursor };
+  }
+
+  const total = await getPrisma().ticket.count({ where: countWhere });
+  const items = await getPrisma().ticket.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
-    skip: (page - 1) * limit,
+    include,
+    orderBy: { id: 'desc' },
     take: limit,
   });
+
+  return buildPaginatedResult(items, total, limit);
 }
 
-export async function findTicketById(tenantId: number, id: number) {
+export async function findTicketById(tenantId: string, id: string) {
   return getPrisma().ticket.findFirst({
     where: { tenantId, id },
     include: {
@@ -56,16 +84,16 @@ export async function findTicketById(tenantId: number, id: number) {
 }
 
 export async function upsertTicket(data: {
-  tenantId: number;
-  inputAppId: number;
+  tenantId: string;
+  inputAppId: string;
   externalId: string;
   state?: string;
   subject?: string;
   initialBody?: string;
   language?: string;
   assigneeId?: string;
-  customerId?: number;
-  outputAppId?: number;
+  customerId?: string;
+  outputAppId?: string;
   externalCreatedAt?: string | Date;
   externalUpdatedAt?: string | Date;
 }) {
@@ -78,6 +106,7 @@ export async function upsertTicket(data: {
       },
     },
     create: {
+      id: generateId(),
       tenantId: data.tenantId,
       inputAppId: data.inputAppId,
       externalId: data.externalId,
@@ -108,8 +137,8 @@ export async function upsertTicket(data: {
 }
 
 export async function updateTicketState(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   state: string,
 ) {
   return getPrisma().ticket.updateMany({
@@ -124,8 +153,8 @@ export async function updateTicketState(
 }
 
 export async function updateTicketAssignee(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   assigneeId: string,
 ) {
   return getPrisma().ticket.updateMany({
@@ -139,10 +168,26 @@ export async function updateTicketAssignee(
   });
 }
 
+export async function findClosedTicketsWithoutKbArticle(tenantId: string, limit = 50) {
+  return getPrisma().$queryRawUnsafe<{ id: string }[]>(
+    `SELECT t.id FROM tickets t
+     LEFT JOIN knowledge_articles ka
+       ON ka.tenant_id = t.tenant_id
+       AND ka.external_id = 'ticket:' || t.id
+     WHERE t.tenant_id = $1
+       AND t.state = 'closed'
+       AND ka.id IS NULL
+     ORDER BY t.created_at DESC
+     LIMIT $2`,
+    tenantId,
+    limit,
+  );
+}
+
 export async function updateTicketOutputApp(
-  tenantId: number,
-  id: number,
-  outputAppId: number,
+  tenantId: string,
+  id: string,
+  outputAppId: string,
 ) {
   return getPrisma().ticket.updateMany({
     where: { tenantId, id },

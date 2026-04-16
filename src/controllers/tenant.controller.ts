@@ -2,21 +2,25 @@ import { Request, Response, NextFunction } from 'express';
 import * as tenantService from '../services/tenant.service';
 import { toSnakeCase } from '../utils/serializer';
 
-export async function create(
+export async function createForUser(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { name, slug, settings } = req.body;
+    const { name, slug } = req.body;
 
     if (!name || !slug) {
       res.status(400).json({ error: 'name and slug are required' });
       return;
     }
 
-    const tenant = await tenantService.createTenant({ name, slug, settings });
-    res.status(201).json(toSnakeCase(tenant));
+    const result = await tenantService.createTenantWithOwner(req.user!.id, { name, slug });
+
+    res.status(201).json(toSnakeCase({
+      ...result.tenant,
+      tenantUser: result.tenantUser,
+    }));
   } catch (err) {
     next(err);
   }
@@ -28,9 +32,7 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenant = await tenantService.getTenantById(
-      Number(req.params.tenantId),
-    );
+    const tenant = await tenantService.getTenantById(req.params.tenantId as string);
 
     if (!tenant) {
       res.status(404).json({ error: 'Tenant not found' });
@@ -43,15 +45,21 @@ export async function show(
   }
 }
 
-export async function update(
+export async function updateForOwner(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
     const { name, settings } = req.body;
-    const tenant = await tenantService.updateTenant(
-      Number(req.params.tenantId),
+
+    if (name === undefined && settings === undefined) {
+      res.status(400).json({ error: 'At least one of name or settings is required' });
+      return;
+    }
+
+    const tenant = await tenantService.partialUpdateTenant(
+      req.params.tenantId as string,
       { name, settings },
     );
 

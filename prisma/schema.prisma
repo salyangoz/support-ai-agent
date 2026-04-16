@@ -10,7 +10,7 @@ datasource db {
 }
 
 model Tenant {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @db.Uuid
   name      String   @db.VarChar(255)
   slug      String   @unique @db.VarChar(100)
   apiKey    String   @unique @map("api_key") @db.VarChar(128)
@@ -25,13 +25,15 @@ model Tenant {
   messages          Message[]
   knowledgeArticles KnowledgeArticle[]
   drafts            Draft[]
+  knowledgeChunks   KnowledgeChunk[]
+  tenantUsers       TenantUser[]
 
   @@map("tenants")
 }
 
 model App {
-  id            Int      @id @default(autoincrement())
-  tenantId      Int      @map("tenant_id")
+  id            String   @id @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
   code          String   @db.VarChar(30)
   type          String   @db.VarChar(20)
   role          String   @db.VarChar(15)
@@ -39,9 +41,11 @@ model App {
   credentials   Json     @default("{}")
   webhookSecret String?  @map("webhook_secret") @db.VarChar(255)
   config        Json     @default("{}")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  isActive      Boolean   @default(true) @map("is_active")
+  lastSyncedAt  DateTime? @map("last_synced_at") @db.Timestamptz
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   inputTickets  Ticket[] @relation("InputApp")
@@ -55,8 +59,8 @@ model App {
 }
 
 model Customer {
-  id         Int      @id @default(autoincrement())
-  tenantId   Int      @map("tenant_id")
+  id         String   @id @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
   externalId String?  @map("external_id") @db.VarChar(128)
   email      String?  @db.VarChar(255)
   name       String?  @db.VarChar(255)
@@ -75,11 +79,11 @@ model Customer {
 }
 
 model Ticket {
-  id                Int       @id @default(autoincrement())
-  tenantId          Int       @map("tenant_id")
-  customerId        Int?      @map("customer_id")
-  inputAppId        Int?      @map("input_app_id")
-  outputAppId       Int?      @map("output_app_id")
+  id                String    @id @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  customerId        String?   @map("customer_id") @db.Uuid
+  inputAppId        String?   @map("input_app_id") @db.Uuid
+  outputAppId       String?   @map("output_app_id") @db.Uuid
   externalId        String    @map("external_id") @db.VarChar(128)
   state             String    @default("open") @db.VarChar(20)
   subject           String?
@@ -89,6 +93,9 @@ model Ticket {
   externalCreatedAt DateTime? @map("external_created_at") @db.Timestamptz
   externalUpdatedAt DateTime? @map("external_updated_at") @db.Timestamptz
   syncedAt          DateTime  @default(now()) @map("synced_at") @db.Timestamptz
+  lastMessageAt     DateTime? @map("last_message_at") @db.Timestamptz
+  lastMessageBy     String?   @map("last_message_by") @db.VarChar(255)
+  lastMessageRole   String?   @map("last_message_role") @db.VarChar(20)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -108,9 +115,9 @@ model Ticket {
 }
 
 model Message {
-  id                Int                          @id @default(autoincrement())
-  ticketId          Int                          @map("ticket_id")
-  tenantId          Int                          @map("tenant_id")
+  id                String                       @id @db.Uuid
+  ticketId          String                       @map("ticket_id") @db.Uuid
+  tenantId          String                       @map("tenant_id") @db.Uuid
   externalId        String                       @map("external_id") @db.VarChar(128)
   authorRole        String                       @map("author_role") @db.VarChar(20)
   authorId          String?                      @map("author_id") @db.VarChar(64)
@@ -120,8 +127,9 @@ model Message {
   externalCreatedAt DateTime?                    @map("external_created_at") @db.Timestamptz
   createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  ticket      Ticket              @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  attachments MessageAttachment[]
 
   @@unique([ticketId, externalId])
   @@index([ticketId])
@@ -129,28 +137,101 @@ model Message {
   @@map("messages")
 }
 
+model MessageAttachment {
+  id          String   @id @db.Uuid
+  messageId   String   @map("message_id") @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  externalId  String?  @map("external_id") @db.VarChar(255)
+  fileName    String   @map("file_name") @db.VarChar(500)
+  fileType    String?  @map("file_type") @db.VarChar(100)
+  fileSize    Int?     @map("file_size")
+  url         String
+  localPath   String?  @map("local_path") @db.VarChar(500)
+  contentText String?  @map("content_text")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([tenantId])
+  @@map("message_attachments")
+}
+
 model KnowledgeArticle {
-  id        Int                          @id @default(autoincrement())
-  tenantId  Int                          @map("tenant_id")
-  title     String                       @db.VarChar(500)
-  content   String
-  category  String?                      @db.VarChar(100)
-  language  String?                      @default("tr") @db.VarChar(10)
-  embedding Unsupported("vector(1536)")?
-  isActive  Boolean                      @default(true) @map("is_active")
-  createdAt DateTime                     @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  id         String                       @id @db.Uuid
+  tenantId   String                       @map("tenant_id") @db.Uuid
+  externalId String?                      @map("external_id") @db.VarChar(500)
+  title      String                       @db.VarChar(500)
+  content    String
+  category   String?                      @db.VarChar(100)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  embedding  Unsupported("vector(1536)")?
+  isActive   Boolean                      @default(true) @map("is_active")
+  createdAt  DateTime                     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
+  tenant Tenant           @relation(fields: [tenantId], references: [id])
+  chunks KnowledgeChunk[]
+
+  @@unique([tenantId, externalId])
   @@index([tenantId, isActive])
   @@map("knowledge_articles")
 }
 
+model KnowledgeChunk {
+  id         String                       @id @db.Uuid
+  articleId  String                       @map("article_id") @db.Uuid
+  tenantId   String                       @map("tenant_id") @db.Uuid
+  chunkIndex Int                          @map("chunk_index")
+  content    String
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime                     @default(now()) @map("created_at") @db.Timestamptz
+
+  article KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tenant  Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@index([articleId])
+  @@index([tenantId])
+  @@map("knowledge_chunks")
+}
+
+model User {
+  id           String       @id @db.Uuid
+  email        String       @unique @db.VarChar(255)
+  passwordHash String       @map("password_hash") @db.VarChar(255)
+  name         String       @db.VarChar(255)
+  isActive     Boolean      @default(true) @map("is_active")
+  lastLoginAt  DateTime?    @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenantUsers TenantUser[]
+
+  @@map("users")
+}
+
+model TenantUser {
+  id        String   @id @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member") @db.VarChar(20)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_users")
+}
+
 model Draft {
-  id            Int       @id @default(autoincrement())
-  ticketId      Int       @map("ticket_id")
-  tenantId      Int       @map("tenant_id")
+  id            String    @id @db.Uuid
+  ticketId      String    @map("ticket_id") @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
   promptContext String?   @map("prompt_context")
   draftResponse String    @map("draft_response")
   aiModel       String?   @map("ai_model") @db.VarChar(100)

@@ -1,0 +1,2 @@
+ALTER TABLE apps ADD COLUMN last_synced_at TIMESTAMPTZ;
+ALTER TABLE apps ADD COLUMN last_error TEXT;

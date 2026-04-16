@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp as createExpressApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import {
   createTenant,
@@ -12,11 +12,14 @@ import {
   createApp,
 } from '../helpers/fixtures';
 
-const app = createExpressApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 describe('Feature: Tenant Isolation', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
@@ -52,7 +55,7 @@ describe('Feature: Tenant Isolation', () => {
 
   it('tenant A cannot access tenant B tickets endpoint', async () => {
     const res = await request
-      .get(`/api/v1/tenants/${tenantB.id}/tickets`)
+      .get(`/tenants/${tenantB.id}/tickets`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(res.status).toBe(403);
@@ -60,7 +63,7 @@ describe('Feature: Tenant Isolation', () => {
 
   it('tenant A cannot access tenant B customers endpoint', async () => {
     const res = await request
-      .get(`/api/v1/tenants/${tenantB.id}/customers`)
+      .get(`/tenants/${tenantB.id}/customers`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(res.status).toBe(403);
@@ -68,7 +71,7 @@ describe('Feature: Tenant Isolation', () => {
 
   it('tenant A cannot access tenant B knowledge articles endpoint', async () => {
     const res = await request
-      .get(`/api/v1/tenants/${tenantB.id}/knowledge-articles`)
+      .get(`/tenants/${tenantB.id}/knowledge-articles`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(res.status).toBe(403);
@@ -76,7 +79,7 @@ describe('Feature: Tenant Isolation', () => {
 
   it('tenant A cannot access tenant B apps endpoint', async () => {
     const res = await request
-      .get(`/api/v1/tenants/${tenantB.id}/apps`)
+      .get(`/tenants/${tenantB.id}/apps`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(res.status).toBe(403);
@@ -84,7 +87,7 @@ describe('Feature: Tenant Isolation', () => {
 
   it('tenant A list endpoints only return own data', async () => {
     const ticketsRes = await request
-      .get(`/api/v1/tenants/${tenantA.id}/tickets`)
+      .get(`/tenants/${tenantA.id}/tickets`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(ticketsRes.status).toBe(200);
@@ -92,7 +95,7 @@ describe('Feature: Tenant Isolation', () => {
     expect(ticketsRes.body.data[0].subject).toBe('Tenant A ticket');
 
     const customersRes = await request
-      .get(`/api/v1/tenants/${tenantA.id}/customers`)
+      .get(`/tenants/${tenantA.id}/customers`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(customersRes.status).toBe(200);
@@ -100,7 +103,7 @@ describe('Feature: Tenant Isolation', () => {
     expect(customersRes.body.data[0].email).toBe('a@a.com');
 
     const articlesRes = await request
-      .get(`/api/v1/tenants/${tenantA.id}/knowledge-articles`)
+      .get(`/tenants/${tenantA.id}/knowledge-articles`)
       .set('X-API-Key', tenantA.api_key);
 
     expect(articlesRes.status).toBe(200);
@@ -110,7 +113,7 @@ describe('Feature: Tenant Isolation', () => {
 
   it('tenant B list endpoints only return own data', async () => {
     const ticketsRes = await request
-      .get(`/api/v1/tenants/${tenantB.id}/tickets`)
+      .get(`/tenants/${tenantB.id}/tickets`)
       .set('X-API-Key', tenantB.api_key);
 
     expect(ticketsRes.status).toBe(200);
@@ -118,7 +121,7 @@ describe('Feature: Tenant Isolation', () => {
     expect(ticketsRes.body.data[0].subject).toBe('Tenant B ticket');
 
     const customersRes = await request
-      .get(`/api/v1/tenants/${tenantB.id}/customers`)
+      .get(`/tenants/${tenantB.id}/customers`)
       .set('X-API-Key', tenantB.api_key);
 
     expect(customersRes.status).toBe(200);
@@ -126,7 +129,7 @@ describe('Feature: Tenant Isolation', () => {
     expect(customersRes.body.data[0].email).toBe('b@b.com');
 
     const articlesRes = await request
-      .get(`/api/v1/tenants/${tenantB.id}/knowledge-articles`)
+      .get(`/tenants/${tenantB.id}/knowledge-articles`)
       .set('X-API-Key', tenantB.api_key);
 
     expect(articlesRes.status).toBe(200);

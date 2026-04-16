@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { Sentry } from '../utils/sentry';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 
@@ -17,6 +18,10 @@ export function errorHandler(
     path: req.path,
     statusCode,
   });
+
+  if (statusCode >= 500) {
+    Sentry.captureException(err);
+  }
 
   const response: { error: string; stack?: string } = {
     error: err.message || 'Internal Server Error',

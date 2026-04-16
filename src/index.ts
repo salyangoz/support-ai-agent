@@ -1,10 +1,15 @@
+import { initSentry, Sentry } from './utils/sentry';
+initSentry();
+
 import express from 'express';
+import path from 'path';
 import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { createRouter } from './routes';
-import { startScheduler } from './scheduler';
+import { createQueueDashboard } from './queues/dashboard';
+import { runMigrations } from './database/migrate';
 
 export function createApp(): express.Application {
   const app = express();
@@ -15,22 +20,28 @@ export function createApp(): express.Application {
   app.use('/webhooks', express.raw({ type: 'application/json' }));
   app.use(express.json());
 
+  // Bull Board dashboard at /queues (protected by helmet, add auth in production)
+  const dashboard = createQueueDashboard();
+  app.use('/queues', dashboard.getRouter());
+
   app.use(createRouter());
+
+  Sentry.setupExpressErrorHandler(app);
 
   return app;
 }
 
 async function main(): Promise<void> {
   try {
+    await runMigrations();
+
     const app = createApp();
 
-    startScheduler();
-
     app.listen(config.port, () => {
-      logger.info(`Server running on port ${config.port}`);
+      logger.info(`API server running on port ${config.port}`);
     });
   } catch (err) {
-    logger.error('Failed to start server', err);
+    logger.error('Failed to start API server', err);
     process.exit(1);
   }
 }

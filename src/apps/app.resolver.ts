@@ -13,8 +13,8 @@ import { logger } from '../utils/logger';
  * 4. No output configured -> throw error
  */
 export async function resolveOutputApps(
-  tenantId: number,
-  ticket: { inputAppId?: number | null; outputAppId?: number | null },
+  tenantId: string,
+  ticket: { inputAppId?: string | null; outputAppId?: string | null },
   tenantSettings?: TenantSettings,
 ): Promise<App[]> {
   // 1. Explicit per-ticket override (single app)

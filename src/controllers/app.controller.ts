@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import * as appService from '../services/app.service';
+import { testAppCredentials } from '../services/appTest.service';
 import { toSnakeCase } from '../utils/serializer';
+import { getQueue, QUEUE_NAMES } from '../queues/queues';
 
 const VALID_TYPES = ['ticket', 'knowledge', 'notification'];
 const VALID_ROLES = ['source', 'destination', 'both'];
@@ -11,7 +13,7 @@ export async function list(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const filters: { type?: string; role?: string; code?: string; isActive?: boolean } = {};
     if (req.query.type) filters.type = req.query.type as string;
     if (req.query.role) filters.role = req.query.role as string;
@@ -19,7 +21,7 @@ export async function list(
     if (req.query.is_active !== undefined) filters.isActive = req.query.is_active === 'true';
 
     const apps = await appService.getApps(tenantId, filters);
-    res.status(200).json(toSnakeCase(apps));
+    res.status(200).json({ data: toSnakeCase(apps) });
   } catch (err) {
     next(err);
   }
@@ -31,8 +33,8 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const appId = Number(req.params.appId);
+    const tenantId = req.params.tenantId as string;
+    const appId = req.params.appId as string;
     const app = await appService.getApp(tenantId, appId);
     if (!app) {
       res.status(404).json({ error: 'App not found' });
@@ -50,7 +52,7 @@ export async function create(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { code, type, role, name, credentials, webhook_secret, config } = req.body;
 
     if (!code || !type || !role || !credentials) {
@@ -97,8 +99,8 @@ export async function update(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const appId = Number(req.params.appId);
+    const tenantId = req.params.tenantId as string;
+    const appId = req.params.appId as string;
     const { name, credentials, webhook_secret, config, is_active, role } = req.body;
 
     if (role !== undefined && !VALID_ROLES.includes(role)) {
@@ -134,10 +136,86 @@ export async function remove(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const appId = Number(req.params.appId);
+    const tenantId = req.params.tenantId as string;
+    const appId = req.params.appId as string;
     await appService.removeApp(tenantId, appId);
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function sync(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = req.params.tenantId as string;
+    const appId = req.params.appId as string;
+    const app = await appService.getApp(tenantId, appId);
+
+    if (!app) {
+      res.status(404).json({ error: 'App not found' });
+      return;
+    }
+
+    if (app.role === 'destination') {
+      res.status(400).json({ error: 'Destination-only apps cannot be synced' });
+      return;
+    }
+
+    let queueName: string;
+    let jobName: string;
+
+    if (app.type === 'knowledge') {
+      queueName = QUEUE_NAMES.SYNC_KB_APP;
+      jobName = 'sync-kb-app';
+    } else if (app.type === 'ticket') {
+      queueName = QUEUE_NAMES.SYNC_TENANT_APP;
+      jobName = 'sync-tenant-app';
+    } else {
+      res.status(400).json({ error: `App type "${app.type}" does not support sync` });
+      return;
+    }
+
+    const queue = getQueue(queueName);
+    const job = await queue.add(jobName, {
+      tenantId,
+      appId,
+    }, {
+      jobId: `manual-sync-${tenantId}-${appId}-${Date.now()}`,
+      removeOnComplete: 100,
+      removeOnFail: 200,
+    });
+
+    res.status(202).json(toSnakeCase({
+      message: 'Sync job queued',
+      jobId: job.id,
+      queue: queueName,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function test(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = req.params.tenantId as string;
+    const appId = req.params.appId as string;
+    const app = await appService.getApp(tenantId, appId);
+
+    if (!app) {
+      res.status(404).json({ error: 'App not found' });
+      return;
+    }
+
+    const result = await testAppCredentials(app as any);
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }

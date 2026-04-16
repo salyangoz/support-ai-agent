@@ -14,20 +14,51 @@ export interface NormalizedTicket {
   externalUpdatedAt?: Date;
 }
 
+export interface NormalizedAttachment {
+  externalId?: string;
+  fileName: string;
+  fileType?: string;
+  fileSize?: number;
+  url: string;
+}
+
 export interface NormalizedMessage {
   externalId: string;
   authorRole: 'customer' | 'agent' | 'bot' | 'system';
   authorId?: string;
   authorName?: string;
   body: string;
+  attachments?: NormalizedAttachment[];
   externalCreatedAt?: Date;
+}
+
+export interface WebhookEventData {
+  state?: string;
+  subject?: string;
+  customerEmail?: string;
+  customerName?: string;
+  customerExternalId?: string;
+  assigneeId?: string;
+  latestMessageBody?: string;
+  latestMessageExternalId?: string;
+  latestMessageAuthorId?: string;
+  latestMessageAuthorName?: string;
+  latestMessageAuthorType?: string;
+  latestMessageAttachments?: NormalizedAttachment[];
+  createdAt?: number;
 }
 
 export interface WebhookEvent {
   type: 'new_ticket' | 'new_customer_reply' | 'ticket_closed' | 'ticket_assigned';
   ticketExternalId: string;
-  data: Record<string, any>;
+  data: WebhookEventData;
 }
+
+export type WebhookEventHandler = (
+  tenant: import('../models/types').Tenant,
+  app: import('../models/types').App,
+  event: WebhookEvent,
+) => Promise<void>;
 
 // --- Ticket App interfaces ---
 
@@ -60,6 +91,5 @@ export interface NormalizedArticle {
   title: string;
   content: string;
   category?: string;
-  language?: string;
   metadata?: Record<string, any>;
 }

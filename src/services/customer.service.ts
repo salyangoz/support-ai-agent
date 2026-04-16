@@ -1,22 +1,22 @@
 import * as customerRepo from '../repositories/customer.repository';
 
 export async function getCustomers(
-  tenantId: number,
-  opts?: { email?: string; name?: string; page?: number; limit?: number },
+  tenantId: string,
+  opts?: { email?: string; name?: string; cursor?: string; limit?: number; page?: number },
 ) {
   return customerRepo.findCustomersByTenantId(tenantId, opts);
 }
 
-export async function getCustomer(tenantId: number, id: number) {
+export async function getCustomer(tenantId: string, id: string) {
   return customerRepo.findCustomerById(tenantId, id);
 }
 
-export async function getCustomerById(tenantId: number, id: number) {
+export async function getCustomerById(tenantId: string, id: string) {
   return customerRepo.findCustomerById(tenantId, id);
 }
 
 export async function upsertCustomer(data: {
-  tenantId: number;
+  tenantId: string;
   email: string;
   name?: string;
   phone?: string;
@@ -27,16 +27,16 @@ export async function upsertCustomer(data: {
 }
 
 export async function updateMetadata(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   metadata: Record<string, unknown>,
 ) {
   return customerRepo.updateCustomerMetadata(tenantId, id, metadata);
 }
 
 export async function updateCustomerMetadata(
-  tenantId: number,
-  id: number,
+  tenantId: string,
+  id: string,
   metadata: Record<string, unknown>,
 ) {
   return customerRepo.updateCustomerMetadata(tenantId, id, metadata);

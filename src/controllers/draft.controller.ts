@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import * as aiDraftService from '../services/aiDraft.service';
 import * as draftService from '../services/draft.service';
 import { toSnakeCase } from '../utils/serializer';
+import { parsePaginationQuery } from '../utils/pagination';
+import { logger } from '../utils/logger';
 
 export async function generate(
   req: Request,
@@ -10,10 +12,33 @@ export async function generate(
 ): Promise<void> {
   try {
     const tenant = req.tenant!;
-    const ticketId = Number(req.params.id);
+    const ticketId = req.params.id as string;
 
     const draft = await aiDraftService.generateDraft(tenant, ticketId);
     res.status(201).json(toSnakeCase(draft));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listByTenant(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = req.params.tenantId as string;
+    const status = req.query.status as string | undefined;
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
+
+    const result = await draftService.getDraftsByTenantId(tenantId, {
+      status,
+      cursor: pagination.cursor,
+      limit: pagination.limit,
+      offset: !pagination.cursor ? offset : undefined,
+    });
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }
@@ -25,14 +50,16 @@ export async function listByTicket(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const ticketId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const ticketId = req.params.id as string;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
 
-    const drafts = await draftService.getDraftsByTicketId(
+    const result = await draftService.getDraftsByTicketId(
       tenantId,
       ticketId,
+      { cursor: pagination.cursor, limit: pagination.limit },
     );
-    res.status(200).json(toSnakeCase(drafts));
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }
@@ -44,8 +71,8 @@ export async function updateStatus(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const draftId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const draftId = req.params.id as string;
     const { status, reviewed_by } = req.body;
 
     if (!status || !['approved', 'rejected'].includes(status)) {
@@ -67,6 +94,21 @@ export async function updateStatus(
       return;
     }
 
+    if (status === 'approved' && req.tenant?.settings?.auto_send_drafts) {
+      try {
+        const tenant = req.tenant!;
+        const sent = await aiDraftService.sendDraft(tenant, draftId);
+        res.status(200).json(toSnakeCase(sent));
+        return;
+      } catch (err) {
+        logger.error('Auto-send failed after approval', {
+          tenantId,
+          draftId,
+          error: (err as Error).message,
+        });
+      }
+    }
+
     res.status(200).json(toSnakeCase(draft));
   } catch (err) {
     next(err);
@@ -80,8 +122,8 @@ export async function send(
 ): Promise<void> {
   try {
     const tenant = req.tenant!;
-    const tenantId = Number(req.params.tenantId);
-    const draftId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const draftId = req.params.id as string;
 
     const draft = await draftService.getDraftById(tenantId, draftId);
 

@@ -4,6 +4,7 @@ import * as ticketSyncService from '../services/ticketSync.service';
 import * as appService from '../services/app.service';
 import * as ticketRepo from '../repositories/ticket.repository';
 import { toSnakeCase } from '../utils/serializer';
+import { parsePaginationQuery } from '../utils/pagination';
 import { logger } from '../utils/logger';
 
 export async function list(
@@ -12,18 +13,20 @@ export async function list(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const { input_app_id, state, customer_id, page, limit } = req.query;
+    const tenantId = req.params.tenantId as string;
+    const { input_app_id, state, customer_id, page } = req.query;
+    const pagination = parsePaginationQuery(req.query as Record<string, unknown>);
 
-    const tickets = await ticketService.getTickets(tenantId, {
-      inputAppId: input_app_id ? Number(input_app_id) : undefined,
+    const result = await ticketService.getTickets(tenantId, {
+      inputAppId: input_app_id as string | undefined,
       state: state as string | undefined,
-      customerId: customer_id ? Number(customer_id) : undefined,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
+      customerId: customer_id as string | undefined,
+      cursor: pagination.cursor,
+      limit: pagination.limit,
+      page: !pagination.cursor && page ? Number(page) : undefined,
     });
 
-    res.status(200).json({ data: toSnakeCase(tickets) });
+    res.status(200).json(toSnakeCase(result));
   } catch (err) {
     next(err);
   }
@@ -35,8 +38,8 @@ export async function show(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const id = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const id = req.params.id as string;
 
     const result = await ticketService.getTicketWithMessages(tenantId, id);
 
@@ -57,7 +60,7 @@ export async function sync(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
+    const tenantId = req.params.tenantId as string;
     const { app_id } = req.body;
 
     if (!app_id) {
@@ -66,7 +69,7 @@ export async function sync(
     }
 
     const tenant = req.tenant!;
-    const app = await appService.getApp(tenantId, Number(app_id));
+    const app = await appService.getApp(tenantId, app_id);
 
     if (!app) {
       res.status(404).json({
@@ -100,8 +103,8 @@ export async function updateOutputApp(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const tenantId = Number(req.params.tenantId);
-    const ticketId = Number(req.params.id);
+    const tenantId = req.params.tenantId as string;
+    const ticketId = req.params.id as string;
     const { output_app_id } = req.body;
 
     if (!output_app_id) {
@@ -109,7 +112,7 @@ export async function updateOutputApp(
       return;
     }
 
-    const app = await appService.getApp(tenantId, Number(output_app_id));
+    const app = await appService.getApp(tenantId, output_app_id);
     if (!app) {
       res.status(404).json({ error: 'Output app not found' });
       return;
@@ -120,7 +123,7 @@ export async function updateOutputApp(
       return;
     }
 
-    const ticket = await ticketRepo.updateTicketOutputApp(tenantId, ticketId, Number(output_app_id));
+    const ticket = await ticketRepo.updateTicketOutputApp(tenantId, ticketId, output_app_id);
     if (!ticket) {
       res.status(404).json({ error: 'Ticket not found' });
       return;

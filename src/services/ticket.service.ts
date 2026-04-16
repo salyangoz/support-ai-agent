@@ -2,19 +2,20 @@ import * as ticketRepo from '../repositories/ticket.repository';
 import * as messageRepo from '../repositories/message.repository';
 
 export async function getTickets(
-  tenantId: number,
+  tenantId: string,
   opts?: {
-    inputAppId?: number;
+    inputAppId?: string;
     state?: string;
-    customerId?: number;
-    page?: number;
+    customerId?: string;
+    cursor?: string;
     limit?: number;
+    page?: number;
   },
 ) {
   return ticketRepo.findTicketsByTenantId(tenantId, opts);
 }
 
-export async function getTicketWithMessages(tenantId: number, id: number) {
+export async function getTicketWithMessages(tenantId: string, id: string) {
   const ticket = await ticketRepo.findTicketById(tenantId, id);
   if (!ticket) {
     return null;

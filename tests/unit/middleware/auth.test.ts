@@ -6,7 +6,7 @@ vi.mock('../../../src/repositories/tenant.repository', () => ({
 }));
 
 vi.mock('../../../src/config', () => ({
-  config: { adminApiKey: 'admin-secret-key' },
+  config: {},
   defaults: {},
 }));
 
@@ -25,42 +25,15 @@ describe('Auth Middleware', () => {
     mockNext = vi.fn();
   });
 
-  describe('adminAuth', () => {
-    it('should pass with valid admin key', async () => {
-      const { adminAuth } = await import('../../../src/middleware/auth');
-      mockReq.headers = { 'x-api-key': 'admin-secret-key' };
-
-      await adminAuth(mockReq as Request, mockRes as Response, mockNext);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should return 401 with missing key', async () => {
-      const { adminAuth } = await import('../../../src/middleware/auth');
-      mockReq.headers = {};
-
-      await adminAuth(mockReq as Request, mockRes as Response, mockNext);
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 401 with invalid key', async () => {
-      const { adminAuth } = await import('../../../src/middleware/auth');
-      mockReq.headers = { 'x-api-key': 'wrong-key' };
-
-      await adminAuth(mockReq as Request, mockRes as Response, mockNext);
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-    });
-  });
-
   describe('tenantAuth', () => {
     it('should set req.tenant with valid API key', async () => {
       const tenantRepo = await import('../../../src/repositories/tenant.repository');
-      const mockTenant = { id: 1, name: 'Test', slug: 'test', apiKey: 'tenant-key', isActive: true };
+      const mockTenant = { id: 'aaaa-bbbb-cccc', name: 'Test', slug: 'test', apiKey: 'tenant-key', isActive: true };
       vi.mocked(tenantRepo.findTenantByApiKey).mockResolvedValue(mockTenant as any);
 
       const { tenantAuth } = await import('../../../src/middleware/auth');
       mockReq.headers = { 'x-api-key': 'tenant-key' };
-      mockReq.params = { tenantId: '1' };
+      mockReq.params = { tenantId: 'aaaa-bbbb-cccc' };
 
       await tenantAuth(mockReq as Request, mockRes as Response, mockNext);
       expect(mockNext).toHaveBeenCalled();
@@ -80,12 +53,12 @@ describe('Auth Middleware', () => {
 
     it('should return 403 if tenantId does not match', async () => {
       const tenantRepo = await import('../../../src/repositories/tenant.repository');
-      const mockTenant = { id: 1, name: 'Test', slug: 'test', apiKey: 'tenant-key', isActive: true };
+      const mockTenant = { id: 'aaaa-bbbb-cccc', name: 'Test', slug: 'test', apiKey: 'tenant-key', isActive: true };
       vi.mocked(tenantRepo.findTenantByApiKey).mockResolvedValue(mockTenant as any);
 
       const { tenantAuth } = await import('../../../src/middleware/auth');
       mockReq.headers = { 'x-api-key': 'tenant-key' };
-      mockReq.params = { tenantId: '999' };
+      mockReq.params = { tenantId: 'xxxx-yyyy-zzzz' };
 
       await tenantAuth(mockReq as Request, mockRes as Response, mockNext);
       expect(mockRes.status).toHaveBeenCalledWith(403);

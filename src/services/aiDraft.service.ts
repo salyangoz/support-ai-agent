@@ -1,12 +1,14 @@
-import axios from 'axios';
-import { config, defaults } from '../config';
+import { defaults } from '../config';
+import { chat as yengecChat } from '../lib/yengec-ai';
 import { embed } from './embedding.service';
 import { createOutputApp } from '../apps/app.factory';
 import { resolveOutputApps } from '../apps/app.resolver';
 import * as ticketRepo from '../repositories/ticket.repository';
 import * as messageRepo from '../repositories/message.repository';
+import * as chunkRepo from '../repositories/knowledgeChunk.repository';
 import * as articleRepo from '../repositories/knowledgeArticle.repository';
 import * as customerRepo from '../repositories/customer.repository';
+import * as attachmentRepo from '../repositories/messageAttachment.repository';
 import * as draftRepo from '../repositories/draft.repository';
 import { Tenant, TenantSettings } from '../models/types';
 import { logger } from '../utils/logger';
@@ -19,29 +21,45 @@ function getSetting<K extends keyof TenantSettings>(
   return tenant.settings[key] ?? fallback;
 }
 
-export async function generateDraft(tenant: Tenant, ticketId: number) {
+export async function generateDraft(tenant: Tenant, ticketId: string) {
   const ticket = await ticketRepo.findTicketById(tenant.id, ticketId);
   if (!ticket) {
     throw new Error(`Ticket ${ticketId} not found`);
   }
 
   const messages = await messageRepo.findMessagesByTicketId(ticketId, tenant.id);
+
+  // Skip draft if last message is not from customer
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage && lastMessage.authorRole !== 'customer') {
+    return null;
+  }
+
   const latestCustomerMessage = findLatestCustomerMessage(messages);
   if (!latestCustomerMessage) {
     throw new Error('No customer message found on ticket');
   }
 
-  const embedding = await embed(latestCustomerMessage);
+  const embedding = await embed(
+    latestCustomerMessage,
+    tenant.settings.embedding_credentials || tenant.settings.ai_credentials,
+    getSetting(tenant, 'embedding_service', defaults.embeddingService),
+    getSetting(tenant, 'embedding_model', defaults.embeddingModel),
+  );
   const kbArticles = await findRelevantArticles(tenant, embedding);
+  const articleSummaries = await articleRepo.findActiveArticleSummaries(tenant.id);
   const pastReplies = await findPastReplies(tenant, embedding, ticketId);
   const customerContext = await buildCustomerContext(tenant.id, ticket.customerId);
   const conversationContext = buildConversationContext(messages);
+  const textAttachments = await attachmentRepo.findTextAttachmentsByTicketId(ticketId, tenant.id);
 
   const promptContext = assemblePromptContext(
     customerContext,
+    articleSummaries,
     kbArticles,
     pastReplies,
     conversationContext,
+    textAttachments,
   );
 
   const aiResponse = await callAi(tenant, promptContext, latestCustomerMessage);
@@ -52,7 +70,7 @@ export async function generateDraft(tenant: Tenant, ticketId: number) {
     promptContext,
     draftResponse: aiResponse.text,
     aiModel: getSetting(tenant, 'ai_model', defaults.aiModel),
-    aiTokensUsed: aiResponse.tokensUsed,
+    aiTokensUsed: aiResponse.tokensUsed ?? undefined,
   });
 
   return draft;
@@ -73,13 +91,13 @@ async function findRelevantArticles(tenant: Tenant, embedding: number[] | null) 
   }
 
   const topK = getSetting(tenant, 'rag_top_k', defaults.ragTopK);
-  return articleRepo.findSimilarArticles(tenant.id, embedding, topK);
+  return chunkRepo.findSimilarChunks(tenant.id, embedding, topK);
 }
 
 async function findPastReplies(
   tenant: Tenant,
   embedding: number[] | null,
-  ticketId: number,
+  ticketId: string,
 ) {
   if (!embedding) {
     return [];
@@ -88,7 +106,7 @@ async function findPastReplies(
   return messageRepo.findSimilarAgentMessages(tenant.id, embedding, ticketId, 2);
 }
 
-async function buildCustomerContext(tenantId: number, customerId: number | null) {
+async function buildCustomerContext(tenantId: string, customerId: string | null) {
   if (!customerId) {
     return null;
   }
@@ -102,7 +120,7 @@ async function buildCustomerContext(tenantId: number, customerId: number | null)
     customerId,
     limit: 100,
   });
-  const ticketCount = previousTickets.length;
+  const ticketCount = previousTickets.data.length;
 
   return { customer, ticketCount };
 }
@@ -116,9 +134,11 @@ function buildConversationContext(messages: any[]): string {
 
 function assemblePromptContext(
   customerCtx: { customer: any; ticketCount: number } | null,
+  articleSummaries: { id: string; title: string; category: string | null }[],
   kbArticles: any[],
   pastReplies: any[],
   conversationContext: string,
+  textAttachments?: { fileName: string; fileType: string | null; contentText: string | null }[],
 ): string {
   const sections: string[] = [];
 
@@ -132,11 +152,18 @@ function assemblePromptContext(
     );
   }
 
+  if (articleSummaries.length > 0) {
+    const list = articleSummaries
+      .map((a) => `- [${a.category || 'general'}] ${a.title}`)
+      .join('\n');
+    sections.push(`## Knowledge Base Overview (${articleSummaries.length} articles)\n${list}`);
+  }
+
   if (kbArticles.length > 0) {
-    const articleTexts = kbArticles
-      .map((a: any) => `### ${a.title}\n${a.content}`)
-      .join('\n\n');
-    sections.push(`## Knowledge Base Articles\n${articleTexts}`);
+    const chunkTexts = kbArticles
+      .map((c: any) => c.content)
+      .join('\n\n---\n\n');
+    sections.push(`## Relevant Knowledge Base Details\n${chunkTexts}`);
   }
 
   if (pastReplies.length > 0) {
@@ -144,6 +171,16 @@ function assemblePromptContext(
       .map((r: any) => `Q: ${r.initial_body || '(no question)'}\nA: ${r.body}`)
       .join('\n\n');
     sections.push(`## Similar Past Replies\n${replyTexts}`);
+  }
+
+  if (textAttachments && textAttachments.length > 0) {
+    const attachmentTexts = textAttachments
+      .filter((a) => a.contentText)
+      .map((a) => `- [${a.fileName}]: ${a.contentText}`)
+      .join('\n');
+    if (attachmentTexts) {
+      sections.push(`## Attachments\n${attachmentTexts}`);
+    }
   }
 
   sections.push(`## Current Conversation\n${conversationContext}`);
@@ -162,24 +199,21 @@ async function callAi(
   const systemInstruction =
     `You are a helpful customer support agent. `
     + `Tone: ${draftTone}. `
+    + `IMPORTANT: Never assume or fabricate information. Only use facts from the provided context. If you don't know something (URLs, prices, policies, etc.), say you will check and get back to the customer. `
     + (aiInstructions ? `Additional instructions: ${aiInstructions}` : '');
 
   const contextInstruction = `Use the following context to draft a reply:\n\n${promptContext}`;
 
-  const response = await axios.post(`${config.yengecAiBaseUrl}/chat`, {
+  return yengecChat({
     service: getSetting(tenant, 'ai_service', defaults.aiService),
     model: getSetting(tenant, 'ai_model', defaults.aiModel),
     instructions: [systemInstruction, contextInstruction],
     question: latestCustomerMessage,
+    credentials: tenant.settings.ai_credentials,
   });
-
-  return {
-    text: response.data?.answer || response.data?.text || response.data,
-    tokensUsed: response.data?.tokens_used || null,
-  };
 }
 
-export async function sendDraft(tenant: Tenant, draftId: number) {
+export async function sendDraft(tenant: Tenant, draftId: string) {
   const draft = await draftRepo.findDraftById(tenant.id, draftId);
   if (!draft) {
     throw new Error(`Draft ${draftId} not found`);
@@ -227,7 +261,11 @@ export async function sendDraft(tenant: Tenant, draftId: number) {
 
   const anySuccess = results.some((r) => r.status === 'fulfilled');
   if (!anySuccess) {
-    throw new Error('Failed to send draft to all output apps');
+    const errors = results
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map((r) => r.reason?.message || 'Unknown error')
+      .join('; ');
+    throw new Error(`Failed to send draft to all output apps: ${errors}`);
   }
 
   await draftRepo.updateDraftStatus(tenant.id, draftId, 'sent');

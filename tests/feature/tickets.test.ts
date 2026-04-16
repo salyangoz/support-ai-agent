@@ -1,23 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
-import { createApp } from '../../src/index';
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createTicket, createMessage, createCustomer } from '../helpers/fixtures';
 
-const app = createApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 describe('Feature: Tickets', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('GET /api/v1/tenants/:tenantId/tickets', () => {
+  describe('GET /tenants/:tenantId/tickets', () => {
     it('should return empty list initially', async () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets`)
+        .get(`/tenants/${tenant.id}/tickets`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -31,7 +34,7 @@ describe('Feature: Tickets', () => {
       await createTicket(tenant.id, { customer_id: customer.id, subject: 'Another issue' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets`)
+        .get(`/tenants/${tenant.id}/tickets`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -44,7 +47,7 @@ describe('Feature: Tickets', () => {
       await createTicket(tenant.id, { state: 'closed' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets?state=open`)
+        .get(`/tenants/${tenant.id}/tickets?state=open`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -53,7 +56,67 @@ describe('Feature: Tickets', () => {
     });
   });
 
-  describe('GET /api/v1/tenants/:tenantId/tickets/:id', () => {
+  describe('Cursor pagination', () => {
+    it('should return pagination metadata', async () => {
+      const tenant = await createTenant();
+      await createTicket(tenant.id);
+      await createTicket(tenant.id);
+      await createTicket(tenant.id);
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/tickets?limit=2`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.pagination).toBeDefined();
+      expect(res.body.pagination.has_more).toBe(true);
+      expect(res.body.pagination.total).toBe(3);
+      expect(res.body.pagination.next_cursor).toBeDefined();
+    });
+
+    it('should paginate through results with cursor', async () => {
+      const tenant = await createTenant();
+      await createTicket(tenant.id);
+      await createTicket(tenant.id);
+      await createTicket(tenant.id);
+
+      const page1 = await request
+        .get(`/tenants/${tenant.id}/tickets?limit=2`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(page1.body.data).toHaveLength(2);
+      expect(page1.body.pagination.has_more).toBe(true);
+
+      const page2 = await request
+        .get(`/tenants/${tenant.id}/tickets?limit=2&cursor=${page1.body.pagination.next_cursor}`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(page2.body.data).toHaveLength(1);
+      expect(page2.body.pagination.has_more).toBe(false);
+      expect(page2.body.pagination.next_cursor).toBeNull();
+      expect(page2.body.pagination.total).toBe(3);
+
+      // No duplicates
+      const allIds = [...page1.body.data, ...page2.body.data].map((t: any) => t.id);
+      expect(new Set(allIds).size).toBe(3);
+    });
+
+    it('should return correct total with filters', async () => {
+      const tenant = await createTenant();
+      await createTicket(tenant.id, { state: 'open' });
+      await createTicket(tenant.id, { state: 'open' });
+      await createTicket(tenant.id, { state: 'closed' });
+
+      const res = await request
+        .get(`/tenants/${tenant.id}/tickets?state=open`)
+        .set('X-API-Key', tenant.api_key);
+
+      expect(res.body.pagination.total).toBe(2);
+    });
+  });
+
+  describe('GET /tenants/:tenantId/tickets/:id', () => {
     it('should return ticket with messages', async () => {
       const tenant = await createTenant();
       const ticket = await createTicket(tenant.id, { subject: 'My Issue' });
@@ -61,7 +124,7 @@ describe('Feature: Tickets', () => {
       await createMessage(ticket.id, tenant.id, { body: 'Sure, let me check', author_role: 'agent' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets/${ticket.id}`)
+        .get(`/tenants/${tenant.id}/tickets/${ticket.id}`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(200);
@@ -73,7 +136,7 @@ describe('Feature: Tickets', () => {
       const tenant = await createTenant();
 
       const res = await request
-        .get(`/api/v1/tenants/${tenant.id}/tickets/99999`)
+        .get(`/tenants/${tenant.id}/tickets/00000000-0000-0000-0000-000000000000`)
         .set('X-API-Key', tenant.api_key);
 
       expect(res.status).toBe(404);
@@ -87,7 +150,7 @@ describe('Feature: Tickets', () => {
       await createTicket(tenantA.id, { subject: 'Secret ticket' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenantB.id}/tickets`)
+        .get(`/tenants/${tenantB.id}/tickets`)
         .set('X-API-Key', tenantB.api_key);
 
       expect(res.status).toBe(200);
@@ -99,7 +162,7 @@ describe('Feature: Tickets', () => {
       const tenantB = await createTenant({ name: 'B', slug: 'tb' });
 
       const res = await request
-        .get(`/api/v1/tenants/${tenantB.id}/tickets`)
+        .get(`/tenants/${tenantB.id}/tickets`)
         .set('X-API-Key', tenantA.api_key);
 
       expect(res.status).toBe(403);

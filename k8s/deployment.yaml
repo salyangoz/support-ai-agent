@@ -1,15 +1,17 @@
+# ─── API Deployment ───
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: support-ai-agent
-  namespace: support-ai
+  name: support-ai-api
   labels:
     app: support-ai-agent
+    component: api
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: support-ai-agent
+      component: api
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,10 +21,14 @@ spec:
     metadata:
       labels:
         app: support-ai-agent
+        component: api
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
-        - name: support-ai-agent
+        - name: api
           image: ghcr.io/salyangoz/support-ai-agent:latest
+          command: ["node", "dist/index.js"]
           ports:
             - containerPort: 3001
               protocol: TCP
@@ -36,7 +42,6 @@ spec:
               memory: "256Mi"
               cpu: "250m"
             limits:
-              memory: "512Mi"
               cpu: "500m"
           livenessProbe:
             httpGet:
@@ -54,3 +59,88 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+---
+# ─── Scheduler Deployment ───
+# Single replica: owns repeatable job registration + scanner processors.
+# Must stay at replicas: 1 to prevent parallel scanner runs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-ai-scheduler
+  labels:
+    app: support-ai-agent
+    component: scheduler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: support-ai-agent
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: support-ai-agent
+        component: scheduler
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: scheduler
+          image: ghcr.io/salyangoz/support-ai-agent:latest
+          command: ["node", "dist/scheduler.js"]
+          envFrom:
+            - configMapRef:
+                name: support-ai-config
+            - secretRef:
+                name: support-ai-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              cpu: "300m"
+---
+# ─── Worker Deployment ───
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-ai-worker
+  labels:
+    app: support-ai-agent
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: support-ai-agent
+      component: worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: support-ai-agent
+        component: worker
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: worker
+          image: ghcr.io/salyangoz/support-ai-agent:latest
+          command: ["node", "dist/worker.js"]
+          envFrom:
+            - configMapRef:
+                name: support-ai-config
+            - secretRef:
+                name: support-ai-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              cpu: "500m"

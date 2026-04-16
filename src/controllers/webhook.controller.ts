@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import * as webhookHandlerService from '../services/webhookHandler.service';
-import { logger } from '../utils/logger';
+import { getQueue, QUEUE_NAMES } from '../queues/queues';
 
 export async function receive(
   req: Request,
@@ -20,18 +19,18 @@ export async function receive(
       return;
     }
 
-    res.status(200).json({ message: 'Webhook received' });
-
-    setImmediate(() => {
-      webhookHandlerService.handleEvent(tenant, app, event).catch((err) => {
-        logger.error('Webhook handler failed', {
-          tenantId: tenant.id,
-          appId: app.id,
-          appCode: app.code,
-          error: err.message,
-        });
-      });
+    await getQueue(QUEUE_NAMES.WEBHOOK_EVENT).add('webhook-event', {
+      tenantId: tenant.id,
+      appId: app.id,
+      appCode: app.code,
+      event,
+    }, {
+      jobId: `wh-${app.id}-${event.ticketExternalId}-${event.type}-${Date.now()}`,
+      removeOnComplete: 100,
+      removeOnFail: 200,
     });
+
+    res.status(200).json({ message: 'Webhook received' });
   } catch (err) {
     next(err);
   }

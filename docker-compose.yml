@@ -10,7 +10,6 @@ services:
       - PORT=3001
       - DATABASE_URL=postgresql://support_ai:password@db:5432/yengec_support_ai
       - YENGEC_AI_BASE_URL=https://ai.yengec.co
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-changeme}
       - LOG_LEVEL=info
     depends_on:
       db:

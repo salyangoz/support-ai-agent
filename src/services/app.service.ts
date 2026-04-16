@@ -1,26 +1,26 @@
 import * as appRepo from '../repositories/app.repository';
 
 export async function getApps(
-  tenantId: number,
+  tenantId: string,
   filters?: { type?: string; role?: string; code?: string; isActive?: boolean },
 ) {
   return appRepo.findAppsByTenantId(tenantId, filters);
 }
 
-export async function getApp(tenantId: number, appId: number) {
+export async function getApp(tenantId: string, appId: string) {
   return appRepo.findAppById(tenantId, appId);
 }
 
-export async function getActiveInputApps(tenantId: number) {
+export async function getActiveInputApps(tenantId: string) {
   return appRepo.findActiveInputApps(tenantId);
 }
 
-export async function getActiveOutputApps(tenantId: number) {
+export async function getActiveOutputApps(tenantId: string) {
   return appRepo.findActiveOutputApps(tenantId);
 }
 
 export async function addApp(data: {
-  tenantId: number;
+  tenantId: string;
   code: string;
   type: string;
   role: string;
@@ -33,8 +33,8 @@ export async function addApp(data: {
 }
 
 export async function updateApp(
-  tenantId: number,
-  appId: number,
+  tenantId: string,
+  appId: string,
   data: {
     name?: string;
     credentials?: Record<string, unknown>;
@@ -47,10 +47,10 @@ export async function updateApp(
   return appRepo.updateApp(tenantId, appId, data);
 }
 
-export async function removeApp(tenantId: number, appId: number) {
+export async function removeApp(tenantId: string, appId: string) {
   return appRepo.deleteApp(tenantId, appId);
 }
 
-export async function getActiveTenantApps(tenantId: number) {
+export async function getActiveTenantApps(tenantId: string) {
   return appRepo.findAppsByTenantId(tenantId, { isActive: true });
 }

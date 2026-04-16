@@ -1,12 +1,16 @@
 import crypto from 'crypto';
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import supertest from 'supertest';
-import { createApp as createExpressApp } from '../../src/index';
+
+// Mock the webhook handler to prevent async background processing during tests
+vi.mock('../../src/apps/intercom/intercom.webhookHandler', () => ({
+  handleEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { setupTestDb, truncateAll, teardownTestDb } from '../helpers/testDb';
 import { createTenant, createApp } from '../helpers/fixtures';
 
-const app = createExpressApp();
-const request = supertest(app);
+let request: ReturnType<typeof supertest>;
 
 function buildIntercomPayload(): Record<string, any> {
   return {
@@ -43,14 +47,18 @@ function computeHmacSignature(secret: string, body: string): string {
 }
 
 describe('Feature: Webhooks', () => {
-  beforeAll(async () => { await setupTestDb(); });
+  beforeAll(async () => {
+    await setupTestDb();
+    const mod = await import('../../src/index');
+    request = supertest(mod.createApp());
+  });
   afterAll(async () => { await teardownTestDb(); });
   beforeEach(async () => { await truncateAll(); });
 
-  describe('POST /webhooks/:tenantSlug/:appId', () => {
+  describe('POST /webhooks/:tenantId/:appId', () => {
     it('should return 200 with valid HMAC signature', async () => {
       const clientSecret = 'my-intercom-client-secret';
-      const tenant = await createTenant({ slug: 'wh-tenant' });
+      const tenant = await createTenant();
       const appRecord = await createApp(tenant.id, {
         code: 'intercom',
         type: 'ticket',
@@ -64,17 +72,17 @@ describe('Feature: Webhooks', () => {
       const signature = computeHmacSignature(clientSecret, body);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/${appRecord.id}`)
-        .set('Content-Type', 'application/json')
+        .post(`/webhooks/${tenant.id}/apps/${appRecord.id}`)
         .set('X-Hub-Signature', signature)
-        .send(Buffer.from(body));
+        .type('application/json')
+        .send(body);
 
       expect(res.status).toBe(200);
     });
 
     it('should return 401 with invalid HMAC signature', async () => {
       const clientSecret = 'my-intercom-client-secret';
-      const tenant = await createTenant({ slug: 'wh-invalid' });
+      const tenant = await createTenant();
       const appRecord = await createApp(tenant.id, {
         code: 'intercom',
         type: 'ticket',
@@ -87,7 +95,7 @@ describe('Feature: Webhooks', () => {
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/${appRecord.id}`)
+        .post(`/webhooks/${tenant.id}/apps/${appRecord.id}`)
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=invalidsignature')
         .send(Buffer.from(body));
@@ -95,12 +103,12 @@ describe('Feature: Webhooks', () => {
       expect(res.status).toBe(401);
     });
 
-    it('should return 404 for unknown tenant slug', async () => {
+    it('should return 404 for unknown tenant id', async () => {
       const payload = buildIntercomPayload();
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post('/webhooks/nonexistent-slug/1')
+        .post('/webhooks/00000000-0000-0000-0000-000000000000/apps/00000000-0000-0000-0000-000000000001')
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=anything')
         .send(Buffer.from(body));
@@ -109,13 +117,13 @@ describe('Feature: Webhooks', () => {
     });
 
     it('should return 400 when app is not configured', async () => {
-      const tenant = await createTenant({ slug: 'wh-noapp' });
+      const tenant = await createTenant();
 
       const payload = buildIntercomPayload();
       const body = JSON.stringify(payload);
 
       const res = await request
-        .post(`/webhooks/${tenant.slug}/99999`)
+        .post(`/webhooks/${tenant.id}/apps/00000000-0000-0000-0000-000000000000`)
         .set('Content-Type', 'application/json')
         .set('X-Hub-Signature', 'sha1=anything')
         .send(Buffer.from(body));
