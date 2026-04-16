@@ -11,6 +11,7 @@ RUN npx prisma generate
 COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
+RUN mkdir -p dist/generated && cp -r src/generated/prisma dist/generated/prisma
 
 FROM node:20-alpine
 
@@ -20,7 +21,6 @@ COPY packages/ ./packages/
 COPY --from=builder /app/packages/yengec-ai/dist ./packages/yengec-ai/dist
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/generated ./src/generated
 COPY src/database/migrations ./dist/database/migrations
 
 ENV NODE_ENV=production
