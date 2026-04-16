@@ -199,6 +199,7 @@ async function callAi(
   const systemInstruction =
     `You are a helpful customer support agent. `
     + `Tone: ${draftTone}. `
+    + `IMPORTANT: Never assume or fabricate information. Only use facts from the provided context. If you don't know something (URLs, prices, policies, etc.), say you will check and get back to the customer. `
     + (aiInstructions ? `Additional instructions: ${aiInstructions}` : '');
 
   const contextInstruction = `Use the following context to draft a reply:\n\n${promptContext}`;
