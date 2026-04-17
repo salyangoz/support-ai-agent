@@ -84,14 +84,14 @@ export function createKnowledgeSourceApp(
     case 'web-scraper': {
       const appConfig = app.config as Record<string, any>;
       return new WebScraperApp({
-        url: appConfig.url,
+        url: credentials.url,
         selector: appConfig.selector,
         maxPages: appConfig.max_pages,
       });
     }
     case 'slack-kb': {
       const appConfig = app.config as Record<string, any>;
-      const rawChannelIds = appConfig.channel_ids || [];
+      const rawChannelIds = credentials.channel_ids || credentials.channelIds || [];
       const channelIds = Array.isArray(rawChannelIds)
         ? rawChannelIds
         : typeof rawChannelIds === 'string'
