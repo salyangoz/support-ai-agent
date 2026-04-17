@@ -29,6 +29,25 @@ vi.mock('../../src/lib/yengec-ai', () => {
   };
 });
 
+// Mock the input app factory so the webhook handler's background sync uses
+// a stub we control, rather than hitting the real Intercom HTTP client.
+const mockFetchTicketMessages = vi.fn().mockResolvedValue([]);
+const mockFetchRecentTickets = vi.fn().mockResolvedValue([]);
+vi.mock('../../src/apps/app.factory', async () => {
+  const actual = await vi.importActual<typeof import('../../src/apps/app.factory')>(
+    '../../src/apps/app.factory',
+  );
+  return {
+    ...actual,
+    createInputApp: vi.fn(() => ({
+      fetchRecentTickets: mockFetchRecentTickets,
+      fetchTicketMessages: mockFetchTicketMessages,
+      verifyWebhook: vi.fn().mockReturnValue(true),
+      parseWebhook: vi.fn(),
+    })),
+  };
+});
+
 import axios from 'axios';
 import { chat as mockYengecChat, embed as mockYengecEmbed } from '../../src/lib/yengec-ai';
 import * as webhookHandler from '../../src/apps/intercom/intercom.webhookHandler';
@@ -103,6 +122,8 @@ describe('E2E Pipeline Integration Tests', () => {
   beforeEach(async () => {
     await truncateAllPGlite();
     vi.clearAllMocks();
+    mockFetchTicketMessages.mockResolvedValue([]);
+    mockFetchRecentTickets.mockResolvedValue([]);
   });
 
   describe('Webhook → Ticket + Message Storage', () => {
@@ -171,6 +192,18 @@ describe('E2E Pipeline Integration Tests', () => {
       vi.mocked(mockYengecEmbed).mockResolvedValue(Array(1536).fill(0.01));
       vi.mocked(mockYengecChat).mockResolvedValue({ text: 'Hi! Let me help you with that.', tokensUsed: 150 });
 
+      // Intercom conversation fetch returns the full thread (the prior customer
+      // message is already in DB; here we simulate the new reply coming back).
+      mockFetchTicketMessages.mockResolvedValue([
+        {
+          externalId: 'msg-201',
+          authorRole: 'customer',
+          authorId: 'user-10',
+          authorName: 'Bob',
+          body: 'My order #456 is missing',
+        },
+      ]);
+
       await webhookHandler.handleEvent(tenant, app as any, {
         type: 'new_customer_reply',
         ticketExternalId: 'conv-200',
@@ -236,6 +269,14 @@ describe('E2E Pipeline Integration Tests', () => {
         post: vi.fn().mockResolvedValue({ data: {} }),
         get: vi.fn(),
       } as any);
+
+      mockFetchTicketMessages.mockResolvedValue([
+        {
+          externalId: 'msg-301',
+          authorRole: 'customer',
+          body: 'Please hurry',
+        },
+      ]);
 
       await webhookHandler.handleEvent(tenant, app as any, {
         type: 'new_customer_reply',
@@ -500,33 +541,34 @@ describe('E2E Pipeline Integration Tests', () => {
       const tenant = await createTestTenant({ sync_lookback_minutes: 15 });
       const app = await createTestApp(tenant.id);
 
-      // Mock the Intercom API calls that the real IntercomInputApp makes
-      const fullConversation = {
-        id: 'conv-sync-1',
-        state: 'open',
-        title: 'Order problem',
-        source: { body: '<p>My order is late</p>', author: { type: 'user', id: 'u1' } },
-        contacts: { contacts: [{ id: 'u1', email: 'sync-test@test.com', name: 'Sync User' }] },
-        conversation_parts: { conversation_parts: [
-          { id: 'part-1', body: 'I need help', author: { type: 'user', id: 'u1', name: 'Alice' }, created_at: 1700000000 },
-          { id: 'part-2', body: 'Let me check', author: { type: 'admin', id: 'a1', name: 'Support' }, created_at: 1700000100 },
-        ] },
-        created_at: 1700000000,
-        updated_at: 1700000200,
-      };
-      const mockIntercomGet = vi.fn().mockResolvedValue({
-        data: fullConversation,
-      });
-      const mockIntercomPost = vi.fn().mockResolvedValue({
-        data: {
-          conversations: [fullConversation],
+      mockFetchRecentTickets.mockResolvedValue([
+        {
+          externalId: 'conv-sync-1',
+          subject: 'Order problem',
+          state: 'open',
+          customerEmail: 'sync-test@test.com',
+          customerName: 'Sync User',
+          externalCreatedAt: new Date(1700000000 * 1000),
+          externalUpdatedAt: new Date(1700000200 * 1000),
         },
-      });
+      ]);
 
-      vi.mocked(axios.create).mockReturnValue({
-        post: mockIntercomPost,
-        get: mockIntercomGet,
-      } as any);
+      mockFetchTicketMessages.mockResolvedValue([
+        {
+          externalId: 'part-1',
+          authorRole: 'customer',
+          authorId: 'u1',
+          authorName: 'Alice',
+          body: 'I need help',
+        },
+        {
+          externalId: 'part-2',
+          authorRole: 'agent',
+          authorId: 'a1',
+          authorName: 'Support',
+          body: 'Let me check',
+        },
+      ]);
 
       // Mock embedding for agent messages
       vi.mocked(mockYengecEmbed).mockResolvedValue(Array(1536).fill(0.02));

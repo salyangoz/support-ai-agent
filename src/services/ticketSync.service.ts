@@ -104,7 +104,7 @@ async function upsertTicketFromSync(
   });
 }
 
-async function syncTicketMessages(
+export async function syncTicketMessages(
   adapter: any,
   tenantId: string,
   ticketId: string,

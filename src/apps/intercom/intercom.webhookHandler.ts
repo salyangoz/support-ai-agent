@@ -3,11 +3,21 @@ import { WebhookEvent } from '../app.interface';
 import { embed } from '../../services/embedding.service';
 import { generateDraft, sendDraft } from '../../services/aiDraft.service';
 import { generateKbFromTicket } from '../../services/ticketKb.service';
+import { syncTicketMessages } from '../../services/ticketSync.service';
+import { createInputApp } from '../app.factory';
 import * as customerRepo from '../../repositories/customer.repository';
 import * as ticketRepo from '../../repositories/ticket.repository';
 import * as messageRepo from '../../repositories/message.repository';
 import { defaults } from '../../config';
 import { logger } from '../../utils/logger';
+
+function embeddingOptsFromTenant(tenant: Tenant) {
+  return {
+    credentials: tenant.settings.embedding_credentials || tenant.settings.ai_credentials,
+    service: tenant.settings.embedding_service,
+    model: tenant.settings.embedding_model,
+  };
+}
 
 function getSetting<K extends keyof TenantSettings>(
   tenant: Tenant,
@@ -66,31 +76,22 @@ async function handleNewTicket(
     externalCreatedAt: event.data.createdAt ? new Date(event.data.createdAt * 1000) : undefined,
   });
 
-  if (event.data.latestMessageBody) {
-    await messageRepo.upsertMessage({
-      ticketId: ticket.id,
-      tenantId: tenant.id,
-      externalId: event.data.latestMessageExternalId || `${event.ticketExternalId}-initial`,
-      authorRole: 'customer',
-      authorId: event.data.latestMessageAuthorId,
-      authorName: event.data.latestMessageAuthorName,
-      body: event.data.latestMessageBody,
-    });
+  const adapter = createInputApp(app);
+  await syncTicketMessages(adapter, tenant.id, ticket.id, event.ticketExternalId, embeddingOptsFromTenant(tenant));
 
-    try {
-      const draft = await generateDraft(tenant, ticket.id);
+  try {
+    const draft = await generateDraft(tenant, ticket.id);
 
-      const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
-      if (autoSend && draft) {
-        await sendDraft(tenant, draft.id);
-      }
-    } catch (err) {
-      logger.error('Draft generation failed for new ticket', {
-        tenantId: tenant.id,
-        ticketId: ticket.id,
-        error: (err as Error).message,
-      });
+    const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
+    if (autoSend && draft) {
+      await sendDraft(tenant, draft.id);
     }
+  } catch (err) {
+    logger.error('Draft generation failed for new ticket', {
+      tenantId: tenant.id,
+      ticketId: ticket.id,
+      error: (err as Error).message,
+    });
   }
 }
 
@@ -108,15 +109,8 @@ async function handleNewCustomerReply(
     customerId: customer?.id,
   });
 
-  await messageRepo.upsertMessage({
-    ticketId: ticket.id,
-    tenantId: tenant.id,
-    externalId: event.data.latestMessageExternalId || event.ticketExternalId,
-    authorRole: 'customer',
-    authorId: event.data.latestMessageAuthorId,
-    authorName: event.data.latestMessageAuthorName,
-    body: event.data.latestMessageBody,
-  });
+  const adapter = createInputApp(app);
+  await syncTicketMessages(adapter, tenant.id, ticket.id, event.ticketExternalId, embeddingOptsFromTenant(tenant));
 
   try {
     const draft = await generateDraft(tenant, ticket.id);
