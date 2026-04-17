@@ -1,7 +1,7 @@
 # Host-side Redis exposure.
 # Redis runs on the host (outside the cluster). Pods reach it via this
-# headless Service + manually-managed Endpoints that point to the node IP.
-# Update `addresses[0].ip` to the IP reachable from pods (typically the
+# headless Service + manually-managed EndpointSlice that points to the node IP.
+# Update `endpoints[0].addresses[0]` to the IP reachable from pods (typically the
 # node's internal IP shown by `kubectl get node -o wide`).
 ---
 apiVersion: v1
@@ -15,20 +15,26 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-    - port: 6379
+    - name: redis
+      port: 6379
       targetPort: 6379
       protocol: TCP
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
   name: external-redis
   labels:
+    kubernetes.io/service-name: external-redis
     app: support-ai-agent
     component: redis
-subsets:
+addressType: IPv4
+ports:
+  - name: redis
+    port: 6379
+    protocol: TCP
+endpoints:
   - addresses:
-      - ip: 10.42.0.1
-    ports:
-      - port: 6379
-        protocol: TCP
+      - "10.42.0.1" # REPLACE: host IP reachable from cluster pods
+    conditions:
+      ready: true
