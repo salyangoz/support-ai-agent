@@ -50,8 +50,8 @@ export class YengecAi {
       question: request.question,
     };
 
-    if (request.credentials) {
-      payload.credentials = request.credentials;
+    if (request.credentials?.api_key) {
+      payload.api_key = request.credentials.api_key;
     }
 
     const response = await this.client.post('/chat', payload);
@@ -71,8 +71,8 @@ export class YengecAi {
       model: request.model || 'text-embedding-3-small',
     };
 
-    if (request.credentials) {
-      payload.credentials = request.credentials;
+    if (request.credentials?.api_key) {
+      payload.api_key = request.credentials.api_key;
     }
 
     const response = await this.client.post('/embed', payload);
