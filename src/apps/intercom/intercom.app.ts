@@ -42,9 +42,7 @@ export class IntercomInputApp implements InputApp {
 
       for (const conv of conversations) {
         try {
-          const detail = await this.client.get(`/conversations/${conv.id}`, {
-            params: { display_as: 'plaintext' },
-          });
+          const detail = await this.client.get(`/conversations/${conv.id}`);
           const conversation = detail.data;
 
           // Intercom returns minimal contact refs — fetch full contact for email/name
@@ -90,9 +88,7 @@ export class IntercomInputApp implements InputApp {
 
   async fetchTicketMessages(externalTicketId: string): Promise<NormalizedMessage[]> {
     try {
-      const response = await this.client.get(`/conversations/${externalTicketId}`, {
-        params: { display_as: 'plaintext' },
-      });
+      const response = await this.client.get(`/conversations/${externalTicketId}`);
       const conversation = response.data;
 
       const messages: NormalizedMessage[] = [];
