@@ -11,25 +11,31 @@ import { scanTicketSync } from './queues/processors/ticketSync.processor';
 import { scanMessageEmbeddings } from './queues/processors/messageEmbedding.processor';
 import { scanArticleEmbeddings } from './queues/processors/articleEmbedding.processor';
 import { scanKbSync } from './queues/processors/kbSync.processor';
+import { scanVoiceSync } from './queues/processors/voiceSync.processor';
+import { scanVoiceTranscription } from './queues/processors/voiceTranscription.processor';
 
-const SCAN_INTERVAL = 10 * 60 * 1000;
+const DEFAULT_SCAN_INTERVAL_MS = 10 * 60 * 1000;
 
-const SCANNER_QUEUES = [
-  QUEUE_NAMES.SCAN_TICKET_SYNC,
-  QUEUE_NAMES.SCAN_MESSAGE_EMBEDDINGS,
-  QUEUE_NAMES.SCAN_ARTICLE_EMBEDDINGS,
-  QUEUE_NAMES.SCAN_KB_SYNC,
+const SCANNER_SCHEDULE: Array<{ queue: string; intervalMs: number }> = [
+  { queue: QUEUE_NAMES.SCAN_TICKET_SYNC, intervalMs: DEFAULT_SCAN_INTERVAL_MS },
+  { queue: QUEUE_NAMES.SCAN_MESSAGE_EMBEDDINGS, intervalMs: DEFAULT_SCAN_INTERVAL_MS },
+  { queue: QUEUE_NAMES.SCAN_ARTICLE_EMBEDDINGS, intervalMs: DEFAULT_SCAN_INTERVAL_MS },
+  { queue: QUEUE_NAMES.SCAN_KB_SYNC, intervalMs: DEFAULT_SCAN_INTERVAL_MS },
+  { queue: QUEUE_NAMES.SCAN_VOICE_SYNC, intervalMs: DEFAULT_SCAN_INTERVAL_MS },
+  { queue: QUEUE_NAMES.SCAN_VOICE_TRANSCRIPTION, intervalMs: 2 * 60 * 1000 },
 ];
 
 async function registerRepeatableJobs(): Promise<void> {
-  for (const name of SCANNER_QUEUES) {
-    await getQueue(name).upsertJobScheduler(
-      `${name}-repeat`,
-      { every: SCAN_INTERVAL },
-      { name },
+  for (const { queue, intervalMs } of SCANNER_SCHEDULE) {
+    await getQueue(queue).upsertJobScheduler(
+      `${queue}-repeat`,
+      { every: intervalMs },
+      { name: queue },
     );
   }
-  logger.info('Repeatable scanner jobs registered (every 10 min)');
+  logger.info('Repeatable scanner jobs registered', {
+    schedules: SCANNER_SCHEDULE.map((s) => `${s.queue}:${Math.round(s.intervalMs / 1000)}s`),
+  });
 }
 
 const workers: Worker[] = [];
@@ -47,6 +53,8 @@ async function main(): Promise<void> {
       new Worker(QUEUE_NAMES.SCAN_MESSAGE_EMBEDDINGS, scanMessageEmbeddings, { connection, concurrency: 1 }),
       new Worker(QUEUE_NAMES.SCAN_ARTICLE_EMBEDDINGS, scanArticleEmbeddings, { connection, concurrency: 1 }),
       new Worker(QUEUE_NAMES.SCAN_KB_SYNC, scanKbSync, { connection, concurrency: 1 }),
+      new Worker(QUEUE_NAMES.SCAN_VOICE_SYNC, scanVoiceSync, { connection, concurrency: 1 }),
+      new Worker(QUEUE_NAMES.SCAN_VOICE_TRANSCRIPTION, scanVoiceTranscription, { connection, concurrency: 1 }),
     );
 
     for (const w of workers) {

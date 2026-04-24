@@ -50,6 +50,7 @@ export interface TenantSettings {
   draft_tone?: string;
   max_context_tokens?: number;
   sync_lookback_minutes?: number;
+  draft_debounce_seconds?: number;
   output_app_ids?: string[];
   auto_generate_kb?: boolean;
 }
@@ -124,10 +125,58 @@ export interface KnowledgeArticle {
   title: string;
   content: string;
   category: string | null;
+  sourceType: 'text' | 'voice';
+  metadata: Record<string, any>;
   embedding: number[] | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type TranscriptionStatus = 'pending' | 'transcribing' | 'done' | 'failed';
+
+export interface VoiceRecording {
+  id: string;
+  tenantId: string;
+  sourceAppId: string;
+  externalId: string;
+  audioUrl: string | null;
+  audioAuthHeaders: Record<string, string> | null;
+  mimeType: string | null;
+  durationSeconds: number | null;
+  language: string | null;
+  caller: string | null;
+  callee: string | null;
+  direction: 'inbound' | 'outbound' | null;
+  customerId: string | null;
+  transcriptionStatus: TranscriptionStatus;
+  transcriptionError: string | null;
+  transcriptionAttempts: number;
+  articleId: string | null;
+  metadata: Record<string, any>;
+  recordedAt: Date | null;
+  transcribedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface VoiceArticleMetadata {
+  audio_url?: string;
+  duration_seconds?: number;
+  language?: string;
+  recorded_at?: string;
+  voice_app_code?: string;
+  voice_app_id?: string;
+  transcriber_app_code?: string;
+  transcriber_app_id?: string;
+  transcriber_confidence?: number;
+  caller?: string;
+  callee?: string;
+  direction?: 'inbound' | 'outbound';
+  customer_id?: string;
+  customer_email?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  summary?: string;
 }
 
 export interface KnowledgeChunk {

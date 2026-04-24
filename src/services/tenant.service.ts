@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import * as tenantRepo from '../repositories/tenant.repository';
 import * as tenantUserRepo from '../repositories/tenantUser.repository';
 import { TenantSettings } from '../models/types';
+import { defaults } from '../config';
 
 export async function createTenant(data: {
   name: string;
@@ -9,11 +10,15 @@ export async function createTenant(data: {
   settings?: TenantSettings;
 }) {
   const apiKey = crypto.randomBytes(48).toString('hex');
+  const settings: TenantSettings = {
+    draft_debounce_seconds: defaults.draftDebounceSeconds,
+    ...(data.settings || {}),
+  };
   return tenantRepo.createTenant({
     name: data.name,
     slug: data.slug,
     apiKey,
-    settings: data.settings as Record<string, unknown> | undefined,
+    settings: settings as Record<string, unknown>,
   });
 }
 

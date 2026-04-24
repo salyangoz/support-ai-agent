@@ -234,21 +234,93 @@ export async function sendDraft(tenant: Tenant, draftId: string) {
   const results = await Promise.allSettled(
     outputApps.map(async (app) => {
       const adapter = createOutputApp(app);
-      await adapter.sendReply(ticket.externalId, draft.draftResponse);
-      return app;
+      const noteMode = adapter.isNoteMode?.() ?? false;
+
+      if (noteMode && adapter.redactPart) {
+        const prior = await draftRepo.findPreviousSentNotes(tenant.id, ticket.id, app.id, draftId);
+        for (const prev of prior) {
+          // Strict safety check: only redact ids this system itself stored
+          // from its own send AS A NOTE. We refuse to redact anything that
+          // isn't bound by all five fields to this tenant+ticket+app+'sent'
+          // note-mode row in our drafts table. The repository query already
+          // enforces this, but we re-assert at call time so a future query
+          // regression cannot widen the blast radius — and comments (customer-
+          // visible messages) can NEVER be redacted through this path.
+          if (
+            !prev.externalMessageId ||
+            prev.tenantId !== tenant.id ||
+            prev.ticketId !== ticket.id ||
+            prev.externalAppId !== app.id ||
+            prev.status !== 'sent' ||
+            prev.sentAsNote !== true
+          ) {
+            logger.warn('Skipping redact: row failed ownership check', {
+              tenantId: tenant.id,
+              ticketId: ticket.id,
+              appId: app.id,
+              previousDraftId: prev.id,
+              sentAsNote: prev.sentAsNote,
+            });
+            continue;
+          }
+
+          try {
+            await adapter.redactPart(ticket.externalId, prev.externalMessageId);
+            logger.info('Previous note redacted', {
+              tenantId: tenant.id,
+              ticketId: ticket.id,
+              appId: app.id,
+              externalMessageId: prev.externalMessageId,
+              previousDraftId: prev.id,
+            });
+          } catch (err) {
+            logger.warn('Failed to redact previous note; continuing with send', {
+              tenantId: tenant.id,
+              ticketId: ticket.id,
+              appId: app.id,
+              externalMessageId: prev.externalMessageId,
+              error: (err as Error).message,
+            });
+          }
+          await draftRepo.deleteDraft(tenant.id, prev.id);
+        }
+      }
+
+      const sendResult = await adapter.sendReply(ticket.externalId, draft.draftResponse);
+
+      return {
+        app,
+        sentAsNote: noteMode,
+        externalMessageId: noteMode ? sendResult.externalMessageId : undefined,
+      };
     }),
   );
 
-  // Log results
+  // Log results and pick the note-mode send (if any) to record on the draft.
+  // We only record an externalMessageId if the send was a note, so comments
+  // are never eligible for later redact.
+  let recordedExternalAppId: string | undefined;
+  let recordedExternalMessageId: string | undefined;
+  let recordedSentAsNote = false;
   for (const result of results) {
     if (result.status === 'fulfilled') {
       logger.info('Draft sent', {
         tenantId: tenant.id,
         draftId,
         ticketId: draft.ticketId,
-        appId: result.value.id,
-        appCode: result.value.code,
+        appId: result.value.app.id,
+        appCode: result.value.app.code,
+        sentAsNote: result.value.sentAsNote,
       });
+      if (
+        result.value.sentAsNote &&
+        result.value.externalMessageId &&
+        !recordedExternalMessageId
+      ) {
+        recordedExternalAppId = result.value.app.id;
+        recordedExternalMessageId = result.value.externalMessageId;
+        recordedSentAsNote = true;
+      }
     } else {
       logger.error('Draft send failed to app', {
         tenantId: tenant.id,
@@ -268,7 +340,9 @@ export async function sendDraft(tenant: Tenant, draftId: string) {
     throw new Error(`Failed to send draft to all output apps: ${errors}`);
   }
 
-  await draftRepo.updateDraftStatus(tenant.id, draftId, 'sent');
-
-  return draftRepo.findDraftById(tenant.id, draftId);
+  return draftRepo.markDraftSent(tenant.id, draftId, {
+    externalAppId: recordedExternalAppId,
+    externalMessageId: recordedExternalMessageId,
+    sentAsNote: recordedSentAsNote,
+  });
 }

@@ -1,14 +1,13 @@
 import { Tenant, App, TenantSettings } from '../../models/types';
 import { WebhookEvent } from '../app.interface';
 import { embed } from '../../services/embedding.service';
-import { generateDraft, sendDraft } from '../../services/aiDraft.service';
+import { enqueueDraftGeneration } from '../../services/draftGeneration.service';
 import { generateKbFromTicket } from '../../services/ticketKb.service';
 import { syncTicketMessages } from '../../services/ticketSync.service';
 import { createInputApp } from '../app.factory';
 import * as customerRepo from '../../repositories/customer.repository';
 import * as ticketRepo from '../../repositories/ticket.repository';
 import * as messageRepo from '../../repositories/message.repository';
-import { defaults } from '../../config';
 import { logger } from '../../utils/logger';
 
 function embeddingOptsFromTenant(tenant: Tenant) {
@@ -77,21 +76,16 @@ async function handleNewTicket(
   });
 
   const adapter = createInputApp(app);
-  await syncTicketMessages(adapter, tenant.id, ticket.id, event.ticketExternalId, embeddingOptsFromTenant(tenant));
+  const hasNewCustomerMessage = await syncTicketMessages(
+    adapter,
+    tenant.id,
+    ticket.id,
+    event.ticketExternalId,
+    embeddingOptsFromTenant(tenant),
+  );
 
-  try {
-    const draft = await generateDraft(tenant, ticket.id);
-
-    const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
-    if (autoSend && draft) {
-      await sendDraft(tenant, draft.id);
-    }
-  } catch (err) {
-    logger.error('Draft generation failed for new ticket', {
-      tenantId: tenant.id,
-      ticketId: ticket.id,
-      error: (err as Error).message,
-    });
+  if (hasNewCustomerMessage) {
+    await enqueueDraftGeneration(tenant, ticket.id, 'webhook');
   }
 }
 
@@ -110,21 +104,16 @@ async function handleNewCustomerReply(
   });
 
   const adapter = createInputApp(app);
-  await syncTicketMessages(adapter, tenant.id, ticket.id, event.ticketExternalId, embeddingOptsFromTenant(tenant));
+  const hasNewCustomerMessage = await syncTicketMessages(
+    adapter,
+    tenant.id,
+    ticket.id,
+    event.ticketExternalId,
+    embeddingOptsFromTenant(tenant),
+  );
 
-  try {
-    const draft = await generateDraft(tenant, ticket.id);
-
-    const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
-    if (autoSend && draft) {
-      await sendDraft(tenant, draft.id);
-    }
-  } catch (err) {
-    logger.error('Draft generation failed for customer reply', {
-      tenantId: tenant.id,
-      ticketId: ticket.id,
-      error: (err as Error).message,
-    });
+  if (hasNewCustomerMessage) {
+    await enqueueDraftGeneration(tenant, ticket.id, 'webhook');
   }
 }
 

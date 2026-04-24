@@ -117,6 +117,9 @@ components:
           type: integer
         sync_lookback_minutes:
           type: integer
+        draft_debounce_seconds:
+          type: integer
+          description: Wait time after the last customer message before generating a draft (defaults to 60)
         output_app_ids:
           type: array
           items:
@@ -211,7 +214,7 @@ components:
           example: intercom
         type:
           type: string
-          enum: [ticket, knowledge, notification]
+          enum: [ticket, knowledge, notification, voice, transcription]
         role:
           type: string
           enum: [source, destination, both]
@@ -396,6 +399,14 @@ components:
         category:
           type: string
           nullable: true
+        source_type:
+          type: string
+          enum: [text, voice]
+          default: text
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Provenance metadata; for voice articles holds audio_url, caller/callee, customer snapshot, etc.
         is_active:
           type: boolean
         created_at:
@@ -411,6 +422,75 @@ components:
               type: integer
             embedded_chunks:
               type: integer
+
+    VoiceRecording:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        source_app_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        audio_url:
+          type: string
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        duration_seconds:
+          type: integer
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        caller:
+          type: string
+          nullable: true
+        callee:
+          type: string
+          nullable: true
+        direction:
+          type: string
+          enum: [inbound, outbound]
+          nullable: true
+        customer_id:
+          type: string
+          format: uuid
+          nullable: true
+        customer:
+          $ref: '#/components/schemas/Customer'
+        transcription_status:
+          type: string
+          enum: [pending, transcribing, done, failed]
+        transcription_error:
+          type: string
+          nullable: true
+        transcription_attempts:
+          type: integer
+        article_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        recorded_at:
+          type: string
+          format: date-time
+          nullable: true
+        transcribed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
 
     Draft:
       type: object
@@ -932,7 +1012,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ticket, knowledge, notification]
+            enum: [ticket, knowledge, notification, voice, transcription]
         - name: role
           in: query
           schema:
@@ -982,10 +1062,12 @@ paths:
                     - `github` (type: knowledge, role: source) — GitHub repo markdown files
                     - `web-scraper` (type: knowledge, role: source) — Web page crawler
                     - `slack-kb` (type: knowledge, role: source) — Slack channel threads
-                  enum: [intercom, github, web-scraper, slack-kb]
+                    - `verimor` (type: voice, role: source) — Verimor IVR call recordings
+                    - `gladia` (type: transcription, role: source) — Gladia speech-to-text
+                  enum: [intercom, github, web-scraper, slack-kb, verimor, gladia]
                 type:
                   type: string
-                  enum: [ticket, knowledge, notification]
+                  enum: [ticket, knowledge, notification, voice, transcription]
                 role:
                   type: string
                   enum: [source, destination, both]
@@ -1617,6 +1699,88 @@ paths:
                     description: Number of KB generation jobs added to the queue
                   message:
                     type: string
+
+  # ── Voice Recordings ──
+  /tenants/{tenantId}/voice-recordings:
+    get:
+      tags: [Voice Recordings]
+      summary: List voice recordings (with transcription pipeline state)
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/paginationLimit'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, transcribing, done, failed]
+      responses:
+        '200':
+          description: Paginated voice recordings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VoiceRecording'
+                  total:
+                    type: integer
+                  next_cursor:
+                    type: string
+                    nullable: true
+
+  /tenants/{tenantId}/voice-recordings/{id}:
+    get:
+      tags: [Voice Recordings]
+      summary: Fetch a single voice recording
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Voice recording
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceRecording'
+        '404':
+          description: Not found
+
+  /tenants/{tenantId}/voice-recordings/{id}/retry:
+    post:
+      tags: [Voice Recordings]
+      summary: Re-queue a failed voice recording for transcription
+      description: Resets the recording's transcription_status to 'pending' and attempts counter to 0, then enqueues a transcribe-recording job.
+      security:
+        - BearerAuth: []
+        - TenantApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Re-queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceRecording'
+        '404':
+          description: Not found
 
   # ── Drafts ──
   /tenants/{tenantId}/drafts:

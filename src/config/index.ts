@@ -19,6 +19,7 @@ export const config = {
 export const defaults = {
   ragTopK: 5,
   syncLookbackMinutes: 10,
+  draftDebounceSeconds: 60,
   aiService: 'deepseek',
   aiModel: 'deepseek-chat',
   embeddingService: 'chat-gpt',

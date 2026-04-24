@@ -5,6 +5,7 @@ import { parsePaginationQuery } from '../utils/pagination';
 import { getQueue, QUEUE_NAMES } from '../queues/queues';
 import * as chunkRepo from '../repositories/knowledgeChunk.repository';
 import * as ticketRepo from '../repositories/ticket.repository';
+import { logger } from '../utils/logger';
 
 export async function list(
   req: Request,

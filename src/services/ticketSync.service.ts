@@ -1,11 +1,10 @@
 import { createInputApp } from '../apps/app.factory';
 import { embed } from './embedding.service';
-import { generateDraft, sendDraft } from './aiDraft.service';
+import { enqueueDraftGeneration } from './draftGeneration.service';
 import { downloadAndStore } from './fileStorage.service';
 import * as customerRepo from '../repositories/customer.repository';
 import * as ticketRepo from '../repositories/ticket.repository';
 import * as messageRepo from '../repositories/message.repository';
-import * as draftRepo from '../repositories/draft.repository';
 import * as attachmentRepo from '../repositories/messageAttachment.repository';
 import * as tenantRepo from '../repositories/tenant.repository';
 import { Tenant, App, TenantSettings } from '../models/types';
@@ -43,30 +42,7 @@ export async function syncInputApp(
     });
 
     if (hasNewCustomerMessage) {
-      try {
-        const existingDrafts = await draftRepo.findDraftsByTicketId(tenant.id, upsertedTicket.id, { limit: 1 });
-        const latestDraft = existingDrafts.data[0];
-        const messages = await messageRepo.findMessagesByTicketId(upsertedTicket.id, tenant.id);
-        const latestCustomerMsg = [...messages].reverse().find((m: any) => m.authorRole === 'customer');
-
-        // Only generate draft if no draft exists yet, or the latest customer message is newer than the latest draft
-        const shouldGenerate = !latestDraft
-          || (latestCustomerMsg?.createdAt && latestDraft.createdAt < latestCustomerMsg.createdAt);
-
-        if (shouldGenerate) {
-          const draft = await generateDraft(tenant, upsertedTicket.id);
-          const autoSend = getSetting(tenant, 'auto_send_drafts', defaults.autoSendDrafts);
-          if (autoSend && draft) {
-            await sendDraft(tenant, draft.id);
-          }
-        }
-      } catch (err) {
-        logger.error('Draft generation failed during sync', {
-          tenantId: tenant.id,
-          ticketId: upsertedTicket.id,
-          error: (err as Error).message,
-        });
-      }
+      await enqueueDraftGeneration(tenant, upsertedTicket.id, 'polling');
     }
   }
 }

@@ -5,6 +5,7 @@ import {
   NormalizedMessage,
   WebhookEvent,
   SendReplyOptions,
+  SendReplyResult,
 } from '../../src/apps/app.interface';
 
 export class MockIntercomInputApp implements InputApp {
@@ -32,9 +33,21 @@ export class MockIntercomInputApp implements InputApp {
 
 export class MockIntercomOutputApp implements OutputApp {
   public sentReplies: Array<{ externalTicketId: string; body: string; options?: SendReplyOptions }> = [];
+  public redactedParts: Array<{ externalTicketId: string; externalMessageId: string }> = [];
+  public sendAsNote = false;
+  public nextExternalMessageId: string | undefined;
 
-  async sendReply(externalTicketId: string, body: string, options?: SendReplyOptions): Promise<void> {
+  isNoteMode(): boolean {
+    return this.sendAsNote;
+  }
+
+  async sendReply(externalTicketId: string, body: string, options?: SendReplyOptions): Promise<SendReplyResult> {
     this.sentReplies.push({ externalTicketId, body, options });
+    return { externalMessageId: this.nextExternalMessageId };
+  }
+
+  async redactPart(externalTicketId: string, externalMessageId: string): Promise<void> {
+    this.redactedParts.push({ externalTicketId, externalMessageId });
   }
 }
 

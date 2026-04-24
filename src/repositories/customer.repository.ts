@@ -79,6 +79,12 @@ export async function findCustomerByEmail(tenantId: string, email: string) {
   });
 }
 
+export async function findCustomerByPhone(tenantId: string, phone: string) {
+  return getPrisma().customer.findFirst({
+    where: { tenantId, phone },
+  });
+}
+
 export async function upsertCustomer(data: {
   tenantId: string;
   email: string;

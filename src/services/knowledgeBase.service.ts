@@ -57,6 +57,8 @@ export async function createArticle(data: {
   content: string;
   category?: string;
   externalId?: string;
+  sourceType?: 'text' | 'voice';
+  metadata?: Record<string, unknown>;
 }) {
   const article = await articleRepo.createArticle({
     tenantId: data.tenantId,
@@ -64,6 +66,8 @@ export async function createArticle(data: {
     content: data.content,
     category: data.category,
     externalId: data.externalId,
+    sourceType: data.sourceType,
+    metadata: data.metadata,
   });
 
   await rechunkArticle(article.id, data.tenantId, data.title + '\n\n' + data.content);
@@ -74,7 +78,13 @@ export async function createArticle(data: {
 export async function updateArticle(
   tenantId: string,
   id: string,
-  data: { title?: string; content?: string; category?: string },
+  data: {
+    title?: string;
+    content?: string;
+    category?: string;
+    sourceType?: 'text' | 'voice';
+    metadata?: Record<string, unknown>;
+  },
 ) {
   const existing = await articleRepo.findArticleById(tenantId, id);
   if (!existing) return null;
@@ -93,13 +103,26 @@ export async function updateArticle(
 export async function upsertArticleByExternalId(
   tenantId: string,
   externalId: string,
-  data: { title: string; content: string; category?: string },
+  data: {
+    title: string;
+    content: string;
+    category?: string;
+    sourceType?: 'text' | 'voice';
+    metadata?: Record<string, unknown>;
+  },
 ) {
   const existing = await articleRepo.findArticleByExternalId(tenantId, externalId);
 
   if (existing) {
     if (existing.title === data.title && existing.content === data.content) {
-      return existing; // no change
+      // Content unchanged, but metadata / sourceType might need refreshing.
+      if (data.metadata !== undefined || data.sourceType !== undefined) {
+        return articleRepo.updateArticle(tenantId, existing.id, {
+          metadata: data.metadata,
+          sourceType: data.sourceType,
+        });
+      }
+      return existing;
     }
     return updateArticle(tenantId, existing.id, data);
   }

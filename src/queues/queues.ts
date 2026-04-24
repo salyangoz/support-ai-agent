@@ -15,6 +15,11 @@ export const QUEUE_NAMES = {
   SYNC_KB_APP: 'sync-kb-app',
   GENERATE_KB_FROM_TICKET: 'generate-kb-from-ticket',
   WEBHOOK_EVENT: 'webhook-event',
+  DRAFT_GENERATION: 'draft-generation',
+  SCAN_VOICE_SYNC: 'scan-voice-sync',
+  SYNC_VOICE_APP: 'sync-voice-app',
+  SCAN_VOICE_TRANSCRIPTION: 'scan-voice-transcription',
+  TRANSCRIBE_RECORDING: 'transcribe-recording',
 } as const;
 
 let queues: Map<string, Queue> | null = null;

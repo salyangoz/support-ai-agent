@@ -113,3 +113,52 @@ export async function updateDraftStatus(
     },
   });
 }
+
+export async function deleteDraft(tenantId: string, id: string) {
+  await getPrisma().draft.deleteMany({
+    where: { tenantId, id },
+  });
+}
+
+export async function findPreviousSentNotes(
+  tenantId: string,
+  ticketId: string,
+  appId: string,
+  excludeDraftId: string,
+) {
+  // Only surface drafts that our system posted AS A NOTE. Comments (customer-
+  // visible messages) must never be redacted, so we require sentAsNote=true
+  // in addition to the ownership fields.
+  return getPrisma().draft.findMany({
+    where: {
+      tenantId,
+      ticketId,
+      externalAppId: appId,
+      externalMessageId: { not: null },
+      sentAsNote: true,
+      id: { not: excludeDraftId },
+      status: 'sent',
+    },
+  });
+}
+
+export async function markDraftSent(
+  tenantId: string,
+  id: string,
+  data: { externalAppId?: string; externalMessageId?: string; sentAsNote?: boolean },
+) {
+  const existing = await getPrisma().draft.findFirst({
+    where: { tenantId, id },
+  });
+  if (!existing) return null;
+
+  return getPrisma().draft.update({
+    where: { id },
+    data: {
+      status: 'sent',
+      externalAppId: data.externalAppId ?? null,
+      externalMessageId: data.externalMessageId ?? null,
+      sentAsNote: data.sentAsNote ?? false,
+    },
+  });
+}

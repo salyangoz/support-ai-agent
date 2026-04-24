@@ -1,5 +1,5 @@
 import { AxiosInstance } from 'axios';
-import { InputApp, OutputApp, NormalizedTicket, NormalizedMessage, WebhookEvent, SendReplyOptions } from '../app.interface';
+import { InputApp, OutputApp, NormalizedTicket, NormalizedMessage, WebhookEvent, SendReplyOptions, SendReplyResult } from '../app.interface';
 import { createIntercomClient } from './intercom.http';
 import { mapConversationToTicket, mapConversationPartsToMessages, mapInitialMessageToNormalized } from './intercom.mapper';
 import { verifyIntercomWebhook, parseIntercomWebhook } from './intercom.webhook';
@@ -153,29 +153,68 @@ export class IntercomOutputApp implements OutputApp {
     this.defaultAdminId = config?.adminId;
   }
 
+  isNoteMode(): boolean {
+    return this.sendAsNote;
+  }
+
   async sendReply(
     externalTicketId: string,
     body: string,
     options?: SendReplyOptions,
-  ): Promise<void> {
+  ): Promise<SendReplyResult> {
     const adminId = options?.adminId || this.defaultAdminId;
     if (!adminId) {
       throw new Error('Intercom admin_id is required. Set it in app config or pass via options.');
     }
 
     try {
-      await this.client.post(`/conversations/${externalTicketId}/reply`, {
+      const { data } = await this.client.post(`/conversations/${externalTicketId}/reply`, {
         message_type: this.sendAsNote ? 'note' : 'comment',
         type: 'admin',
         admin_id: adminId,
         body,
       });
+
+      // Pick only the part authored by THIS admin with the message_type we
+      // just posted. Picking parts[-1] would be racy under concurrent writes
+      // and could later cause us to redact another admin's note. If nothing
+      // matches we return undefined so no id is stored, which makes the
+      // redact-previous-note step skip entirely — safe by default.
+      const expectedPartType = this.sendAsNote ? 'note' : 'comment';
+      const parts: Array<Record<string, any>> = data?.conversation_parts?.conversation_parts ?? [];
+      const ours = parts.filter((p) =>
+        String(p?.author?.id ?? '') === String(adminId) &&
+        p?.author?.type === 'admin' &&
+        (!p?.part_type || p.part_type === expectedPartType)
+      );
+      const latest = ours.length > 0
+        ? ours.reduce((a, b) => ((a?.created_at ?? 0) >= (b?.created_at ?? 0) ? a : b))
+        : null;
+
+      return { externalMessageId: latest?.id ? String(latest.id) : undefined };
     } catch (err: any) {
       const detail = err?.response?.data
         ? JSON.stringify(err.response.data)
         : err?.message;
       throw new Error(
         `Intercom reply failed (${err?.response?.status}): ${detail}`,
+      );
+    }
+  }
+
+  async redactPart(externalTicketId: string, externalMessageId: string): Promise<void> {
+    try {
+      await this.client.post('/conversations/redact', {
+        type: 'conversation_part',
+        conversation_id: externalTicketId,
+        conversation_part_id: externalMessageId,
+      });
+    } catch (err: any) {
+      const detail = err?.response?.data
+        ? JSON.stringify(err.response.data)
+        : err?.message;
+      throw new Error(
+        `Intercom redact failed (${err?.response?.status}): ${detail}`,
       );
     }
   }

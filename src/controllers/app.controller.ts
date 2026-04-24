@@ -4,7 +4,7 @@ import { testAppCredentials } from '../services/appTest.service';
 import { toSnakeCase } from '../utils/serializer';
 import { getQueue, QUEUE_NAMES } from '../queues/queues';
 
-const VALID_TYPES = ['ticket', 'knowledge', 'notification'];
+const VALID_TYPES = ['ticket', 'knowledge', 'notification', 'voice', 'transcription'];
 const VALID_ROLES = ['source', 'destination', 'both'];
 
 export async function list(
@@ -174,6 +174,15 @@ export async function sync(
     } else if (app.type === 'ticket') {
       queueName = QUEUE_NAMES.SYNC_TENANT_APP;
       jobName = 'sync-tenant-app';
+    } else if (app.type === 'voice') {
+      queueName = QUEUE_NAMES.SYNC_VOICE_APP;
+      jobName = 'sync-voice-app';
+    } else if (app.type === 'transcription') {
+      // Transcription apps are passive processors; "Sync Now" means
+      // "run the transcription scanner immediately to pick up any
+      // pending recordings".
+      queueName = QUEUE_NAMES.SCAN_VOICE_TRANSCRIPTION;
+      jobName = 'scan-voice-transcription';
     } else {
       res.status(400).json({ error: `App type "${app.type}" does not support sync` });
       return;

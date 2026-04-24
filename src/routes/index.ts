@@ -14,6 +14,7 @@ import * as authController from '../controllers/auth.controller';
 import * as userController from '../controllers/user.controller';
 import * as chatController from '../controllers/chat.controller';
 import * as attachmentController from '../controllers/attachment.controller';
+import * as voiceRecordingController from '../controllers/voiceRecording.controller';
 
 export function createRouter(): Router {
   const router = Router();
@@ -195,6 +196,23 @@ export function createRouter(): Router {
     '/tenants/:tenantId/knowledge-articles/generate-from-tickets',
     tenantOrUserAuth, requireRole('owner', 'admin'),
     knowledgeBaseController.generateFromTickets,
+  );
+
+  // Voice recording routes
+  router.get(
+    '/tenants/:tenantId/voice-recordings',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    voiceRecordingController.list,
+  );
+  router.get(
+    '/tenants/:tenantId/voice-recordings/:id',
+    tenantOrUserAuth, requireRole('owner', 'admin', 'member'),
+    voiceRecordingController.show,
+  );
+  router.post(
+    '/tenants/:tenantId/voice-recordings/:id/retry',
+    tenantOrUserAuth, requireRole('owner', 'admin'),
+    voiceRecordingController.retry,
   );
 
   // Draft routes

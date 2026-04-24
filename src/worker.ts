@@ -14,6 +14,9 @@ import { processEmbedChunk } from './queues/processors/articleEmbedding.processo
 import { processSyncKbApp } from './queues/processors/kbSync.processor';
 import { processGenerateKbFromTicket } from './queues/processors/ticketKb.processor';
 import { processWebhookEvent } from './queues/processors/webhookEvent.processor';
+import { processDraftGeneration } from './queues/processors/draftGeneration.processor';
+import { processSyncVoiceApp } from './queues/processors/voiceSync.processor';
+import { processTranscribeRecording } from './queues/processors/voiceTranscription.processor';
 
 const workers: Worker[] = [];
 
@@ -30,6 +33,9 @@ async function main(): Promise<void> {
       new Worker(QUEUE_NAMES.SYNC_KB_APP, processSyncKbApp, { connection, concurrency: 3 }),
       new Worker(QUEUE_NAMES.GENERATE_KB_FROM_TICKET, processGenerateKbFromTicket, { connection, concurrency: 3 }),
       new Worker(QUEUE_NAMES.WEBHOOK_EVENT, processWebhookEvent, { connection, concurrency: 5 }),
+      new Worker(QUEUE_NAMES.DRAFT_GENERATION, processDraftGeneration, { connection, concurrency: 5 }),
+      new Worker(QUEUE_NAMES.SYNC_VOICE_APP, processSyncVoiceApp, { connection, concurrency: 2 }),
+      new Worker(QUEUE_NAMES.TRANSCRIBE_RECORDING, processTranscribeRecording, { connection, concurrency: 2 }),
     );
 
     for (const w of workers) {

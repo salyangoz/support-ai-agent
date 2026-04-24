@@ -70,7 +70,9 @@ export interface InputApp {
 }
 
 export interface OutputApp {
-  sendReply(externalTicketId: string, body: string, options?: SendReplyOptions): Promise<void>;
+  sendReply(externalTicketId: string, body: string, options?: SendReplyOptions): Promise<SendReplyResult>;
+  redactPart?(externalTicketId: string, externalMessageId: string): Promise<void>;
+  isNoteMode?(): boolean;
 }
 
 export interface DualApp extends InputApp, OutputApp {}
@@ -78,6 +80,10 @@ export interface DualApp extends InputApp, OutputApp {}
 export interface SendReplyOptions {
   adminId?: string;
   metadata?: Record<string, any>;
+}
+
+export interface SendReplyResult {
+  externalMessageId?: string;
 }
 
 // --- Knowledge App interfaces ---
@@ -92,4 +98,56 @@ export interface NormalizedArticle {
   content: string;
   category?: string;
   metadata?: Record<string, any>;
+}
+
+// --- Voice App interfaces ---
+
+export interface NormalizedVoiceRecording {
+  externalId: string;
+  audioUrl: string;
+  audioAuthHeaders?: Record<string, string>;
+  mimeType?: string;
+  durationSeconds?: number;
+  recordedAt?: Date;
+  language?: string;
+  caller?: string;
+  callee?: string;
+  direction?: 'inbound' | 'outbound';
+  callerEmail?: string;
+  callerName?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface VoiceSourceApp {
+  fetchRecentRecordings(sinceMinutes: number): Promise<NormalizedVoiceRecording[]>;
+}
+
+export interface TranscriptionInput {
+  audioUrl?: string;
+  audioAuthHeaders?: Record<string, string>;
+  localFilePath?: string;
+  mimeType?: string;
+  languageHint?: string;
+  durationSeconds?: number;
+}
+
+export interface TranscriptionSegment {
+  start: number;
+  end: number;
+  speaker?: string;
+  text: string;
+}
+
+export interface TranscriptionResult {
+  text: string;
+  summary?: string;
+  language?: string;
+  durationSeconds?: number;
+  confidence?: number;
+  segments?: TranscriptionSegment[];
+  raw?: unknown;
+}
+
+export interface TranscriptionApp {
+  transcribe(input: TranscriptionInput): Promise<TranscriptionResult>;
 }
