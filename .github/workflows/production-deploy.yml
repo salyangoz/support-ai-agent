@@ -79,15 +79,20 @@ jobs:
       - name: Rollout worker
         run: kubectl rollout restart deployment/support-ai-worker
 
+  notify:
+    needs:
+      - deploy
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
       - name: Slack Notification
-        if: always()
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_TITLE: Support AI Agent — Backend deploy
-          SLACK_COLOR: ${{ job.status }}
+          SLACK_COLOR: ${{ needs.deploy.result }}
           SLACK_USERNAME: GitHub Actions
           SLACK_MESSAGE: |
             Backend servisi canlıya alındı!
-            Durum: ${{ job.status }}
+            Durum: ${{ needs.deploy.result }}
             Commit: ${{ github.event.head_commit.message }}
